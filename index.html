@@ -46,14 +46,14 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 <div class="wrap">
   <header>
     <h1>AR-<span>фото</span></h1>
-    <div class="spec">Рост 1,74 м · верстак 1,05 × 0,72 × 0,8 м</div>
+    <div class="spec">Рост 1,70 м · двусторонняя фигура</div>
   </header>
 
   <div class="stage">
-    <model-viewer id="mv" src="standee.glb" alt="Фигура в полный рост у стального верстака"
+    <model-viewer id="mv" src="standee.glb" alt="Фигура в полный рост, вид спереди и сзади"
       ar ar-modes="scene-viewer quick-look webxr" ar-scale="fixed" ar-placement="floor"
-      camera-controls touch-action="pan-y" camera-target="0m 1m 0.05m" camera-orbit="-12deg 80deg 4.6m"
-      min-camera-orbit="-75deg 40deg 1.5m" max-camera-orbit="75deg 95deg 6m"
+      camera-controls touch-action="pan-y" camera-target="0m 0.88m 0m" camera-orbit="-15deg 82deg 4.2m"
+      min-camera-orbit="auto 40deg 1.5m" max-camera-orbit="auto 95deg 6m"
       shadow-intensity="1" shadow-softness="0.8" exposure="1.05" environment-image="neutral"
       interaction-prompt="none">
       <button slot="ar-button" class="ar-btn" id="arBtn">Поставить в комнату</button>
@@ -75,7 +75,7 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
   <div class="steps">
     <div class="step"><h2>Android</h2><p>«Поставить в комнату» откроет камеру. Медленно поводите телефоном над полом, фигура встанет в реальном размере. Фото — обычный скриншот. Если телефон попросит «Сервисы Google Play для AR», установите их из Play Маркета.</p></div>
     <div class="step"><h2>iPhone</h2><p>Safari → «Поставить в комнату». Откроется Quick Look, внизу есть кнопка съёмки фото и видео.</p></div>
-    <div class="step"><h2>Как снимать</h2><p>Встаньте рядом с верстаком, второй человек снимает. Фигуру можно двигать и поворачивать пальцем.</p></div>
+    <div class="step"><h2>Как снимать</h2><p>Встаньте рядом с фигурой, второй человек снимает. Фигуру можно двигать и поворачивать пальцем, со спины она тоже прорисована.</p></div>
   </div>
 </div>
 
