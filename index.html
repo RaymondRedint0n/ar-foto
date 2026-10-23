@@ -35,20 +35,24 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 .step{border-top:2px solid var(--line);padding-top:10px;min-width:0}
 .step h2{font-family:var(--display);font-weight:500;font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 4px;color:var(--accent)}
 .step p{margin:0;color:var(--fg);font-size:14px}
-.chrome{align-self:flex-start;color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.fallback{border:1px solid var(--line);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--panel)}
+.fb-title{margin:0;font-weight:600}
+.fb-list{display:flex;flex-direction:column;gap:8px}
+.btn{display:block;text-align:center;border:1px solid var(--accent);background:transparent;color:var(--fg);font:600 15px/1.3 var(--body);padding:11px 14px;border-radius:4px;text-decoration:none;cursor:pointer}
+.btn.ghost{border-color:var(--line);color:var(--muted)}
 @media (prefers-reduced-motion:reduce){model-viewer{--auto-rotate:none}}
 </style>
 
 <div class="wrap">
   <header>
     <h1>AR-<span>фото</span></h1>
-    <div class="spec">Рост 1,74 м · верстак 1,05 × 0,55 × 0,8 м</div>
+    <div class="spec">Рост 1,74 м · верстак 1,05 × 0,72 × 0,8 м</div>
   </header>
 
   <div class="stage">
     <model-viewer id="mv" src="standee.glb" alt="Фигура в полный рост у стального верстака"
       ar ar-modes="scene-viewer quick-look webxr" ar-scale="fixed" ar-placement="floor"
-      camera-controls touch-action="pan-y" camera-target="0m 0.95m 0.2m" camera-orbit="-12deg 80deg 4.6m"
+      camera-controls touch-action="pan-y" camera-target="0m 1m 0.05m" camera-orbit="-12deg 80deg 4.6m"
       min-camera-orbit="-75deg 40deg 1.5m" max-camera-orbit="75deg 95deg 6m"
       shadow-intensity="1" shadow-softness="0.8" exposure="1.05" environment-image="neutral"
       interaction-prompt="none">
@@ -58,7 +62,15 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
   </div>
 
   <p class="status" id="status">Проверяю, поддерживает ли устройство AR…</p>
-  <a class="chrome" id="chromeLink" href="#" hidden>Открыть эту страницу в Chrome</a>
+  <div class="fallback" id="fallback" hidden>
+    <p class="fb-title">Камера не открылась? Попробуйте по порядку:</p>
+    <div class="fb-list">
+      <button class="btn" id="fbGoogle" type="button">Открыть через приложение Google</button>
+      <button class="btn" id="fbWebxr" type="button" hidden>Запустить AR прямо в Chrome</button>
+      <a class="btn" id="chromeLink" href="#" hidden>Открыть эту страницу в Chrome</a>
+      <a class="btn ghost" href="https://play.google.com/store/apps/details?id=com.google.ar.core" target="_blank" rel="noopener">Установить «Сервисы Google Play для AR»</a>
+    </div>
+  </div>
 
   <div class="steps">
     <div class="step"><h2>Android</h2><p>«Поставить в комнату» откроет камеру. Медленно поводите телефоном над полом, фигура встанет в реальном размере. Фото — обычный скриншот. Если телефон попросит «Сервисы Google Play для AR», установите их из Play Маркета.</p></div>
@@ -70,27 +82,44 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 <script>
 (function(){
   var mv=document.getElementById('mv'), st=document.getElementById('status'), stage=document.querySelector('.stage');
+  var fb=document.getElementById('fallback');
   var ua=navigator.userAgent, isAndroid=/Android/i.test(ua);
-  var isChrome=/Chrome\//.test(ua) && !/YaBrowser|SamsungBrowser|OPR\/|EdgA|MiuiBrowser|HuaweiBrowser|HeyTapBrowser/.test(ua);
+  var isChrome=/Chrome\//.test(ua) && !/YaBrowser|SamsungBrowser|OPR\/|EdgA|MiuiBrowser|HuaweiBrowser|HeyTapBrowser|; wv\)/.test(ua);
   function set(html){st.innerHTML=html;}
   var model=new URL('standee.glb', location.href).href;
   var page=location.href.split('#')[0];
-  /* Android: открываем системное AR-приложение Google (Scene Viewer) сразу в режиме камеры */
-  var sceneViewer='intent://arvr.google.com/scene-viewer/1.0?file='+encodeURIComponent(model)+
-    '&mode=ar_only&resizable=false&title='+encodeURIComponent('AR-фото')+
-    '#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;'+
-    'S.browser_fallback_url='+encodeURIComponent(page+'#noar')+';end;';
+  function sv(pkg, mode){
+    return 'intent://arvr.google.com/scene-viewer/1.0?file='+encodeURIComponent(model)+
+      '&mode='+mode+'&resizable=false&title='+encodeURIComponent('AR-фото')+
+      '#Intent;scheme=https;package='+pkg+';action=android.intent.action.VIEW;'+
+      'S.browser_fallback_url='+encodeURIComponent(page+'#noar')+';end;';
+  }
+  var timer=null;
+  function showFallback(){ fb.hidden=false; fb.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+  function launch(url){
+    clearTimeout(timer);
+    location.href=url;
+    /* если через 2,5 с страница всё ещё на экране — приложение не открылось */
+    timer=setTimeout(function(){ if(document.visibilityState==='visible') showFallback(); },2500);
+  }
+  document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') clearTimeout(timer); });
+
   if(isAndroid){
     stage.addEventListener('click',function(e){
-      if(e.target.closest && e.target.closest('#arBtn')){ e.preventDefault(); e.stopImmediatePropagation(); location.href=sceneViewer; }
+      if(e.target.closest && e.target.closest('#arBtn')){ e.preventDefault(); e.stopImmediatePropagation(); launch(sv('com.google.ar.core','ar_only')); }
     },true);
+    document.getElementById('fbGoogle').addEventListener('click',function(){ launch(sv('com.google.android.googlequicksearchbox','ar_preferred')); });
+    if(isChrome && navigator.xr){
+      var wx=document.getElementById('fbWebxr'); wx.hidden=false;
+      wx.addEventListener('click',function(){ mv.setAttribute('ar-modes','webxr'); mv.activateAR(); });
+    }
     if(!isChrome){
       var cl=document.getElementById('chromeLink');
       cl.href='intent://'+page.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end;';
       cl.hidden=false;
     }
   }
-  if(location.hash==='#noar'){ set('Камера не открылась. Установите «Сервисы Google Play для AR» из Play Маркета и нажмите кнопку ещё раз.'); }
+  if(location.hash==='#noar'){ set('На телефоне нет «Сервисов Google Play для AR» или они устарели.'); showFallback(); }
   mv.addEventListener('load',function(){
     if(location.hash==='#noar') return;
     setTimeout(function(){
@@ -99,7 +128,7 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
     },300);
   });
   mv.addEventListener('ar-status',function(e){
-    if(e.detail.status==='failed'){ set('AR не запустилось. На iPhone откройте страницу в Safari.'); }
+    if(e.detail.status==='failed'){ set('AR не запустилось.'); if(isAndroid) showFallback(); }
   });
   mv.addEventListener('error',function(){ set('Модель не загрузилась. Обновите страницу.'); });
 })();
