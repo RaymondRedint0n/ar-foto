@@ -141,6 +141,12 @@ def main():
     sc.add_geometry(quad(back, S, False), node_name='back', geom_name='back')
     os.makedirs(OUT, exist_ok=True)
     sc.export(os.path.join(OUT, 'standee.glb'))
+    # картинки для режима «Фото с фигурой» (камера телефона + фигура поверх)
+    for im, name in [(front, 'figure.png'), (back, 'figure-back.png')]:
+        im = im.crop(im.getbbox())
+        if im.height > 1600:
+            im = im.resize((round(im.width * 1600 / im.height), 1600), Image.LANCZOS)
+        im.save(os.path.join(OUT, name), optimize=True)
     shutil.copy(os.path.join(ROOT, 'index.html'), os.path.join(OUT, 'index.html'))
     with open(os.path.join(ROOT, 'last_build.txt'), 'w') as fh:
         fh.write(d.isoformat() + '\n')
