@@ -35,6 +35,7 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 .step{border-top:2px solid var(--line);padding-top:10px;min-width:0}
 .step h2{font-family:var(--display);font-weight:500;font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 4px;color:var(--accent)}
 .step p{margin:0;color:var(--fg);font-size:14px}
+.chrome{align-self:flex-start;color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:3px}
 @media (prefers-reduced-motion:reduce){model-viewer{--auto-rotate:none}}
 </style>
 
@@ -46,8 +47,8 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 
   <div class="stage">
     <model-viewer id="mv" src="standee.glb" alt="Фигура в полный рост у стального верстака"
-      ar ar-modes="webxr scene-viewer quick-look" ar-scale="fixed" ar-placement="floor"
-      camera-controls touch-action="pan-y" camera-target="0m 0.95m 0.2m" camera-orbit="-22deg 80deg 4.4m"
+      ar ar-modes="scene-viewer quick-look webxr" ar-scale="fixed" ar-placement="floor"
+      camera-controls touch-action="pan-y" camera-target="0m 0.95m 0.2m" camera-orbit="-12deg 80deg 4.6m"
       min-camera-orbit="-75deg 40deg 1.5m" max-camera-orbit="75deg 95deg 6m"
       shadow-intensity="1" shadow-softness="0.8" exposure="1.05" environment-image="neutral"
       interaction-prompt="none">
@@ -57,9 +58,10 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
   </div>
 
   <p class="status" id="status">Проверяю, поддерживает ли устройство AR…</p>
+  <a class="chrome" id="chromeLink" href="#" hidden>Открыть эту страницу в Chrome</a>
 
   <div class="steps">
-    <div class="step"><h2>Android</h2><p>Chrome → «Поставить в комнату». Наведите камеру на пол, фигура встанет в реальном размере. Фото — обычный скриншот.</p></div>
+    <div class="step"><h2>Android</h2><p>«Поставить в комнату» откроет камеру. Медленно поводите телефоном над полом, фигура встанет в реальном размере. Фото — обычный скриншот. Если телефон попросит «Сервисы Google Play для AR», установите их из Play Маркета.</p></div>
     <div class="step"><h2>iPhone</h2><p>Safari → «Поставить в комнату». Откроется Quick Look, внизу есть кнопка съёмки фото и видео.</p></div>
     <div class="step"><h2>Как снимать</h2><p>Встаньте рядом с верстаком, второй человек снимает. Фигуру можно двигать и поворачивать пальцем.</p></div>
   </div>
@@ -67,16 +69,37 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 
 <script>
 (function(){
-  var mv=document.getElementById('mv'), st=document.getElementById('status');
+  var mv=document.getElementById('mv'), st=document.getElementById('status'), stage=document.querySelector('.stage');
+  var ua=navigator.userAgent, isAndroid=/Android/i.test(ua);
+  var isChrome=/Chrome\//.test(ua) && !/YaBrowser|SamsungBrowser|OPR\/|EdgA|MiuiBrowser|HuaweiBrowser|HeyTapBrowser/.test(ua);
   function set(html){st.innerHTML=html;}
+  var model=new URL('standee.glb', location.href).href;
+  var page=location.href.split('#')[0];
+  /* Android: открываем системное AR-приложение Google (Scene Viewer) сразу в режиме камеры */
+  var sceneViewer='intent://arvr.google.com/scene-viewer/1.0?file='+encodeURIComponent(model)+
+    '&mode=ar_only&resizable=false&title='+encodeURIComponent('AR-фото')+
+    '#Intent;scheme=https;package=com.google.ar.core;action=android.intent.action.VIEW;'+
+    'S.browser_fallback_url='+encodeURIComponent(page+'#noar')+';end;';
+  if(isAndroid){
+    stage.addEventListener('click',function(e){
+      if(e.target.closest && e.target.closest('#arBtn')){ e.preventDefault(); e.stopImmediatePropagation(); location.href=sceneViewer; }
+    },true);
+    if(!isChrome){
+      var cl=document.getElementById('chromeLink');
+      cl.href='intent://'+page.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end;';
+      cl.hidden=false;
+    }
+  }
+  if(location.hash==='#noar'){ set('Камера не открылась. Установите «Сервисы Google Play для AR» из Play Маркета и нажмите кнопку ещё раз.'); }
   mv.addEventListener('load',function(){
+    if(location.hash==='#noar') return;
     setTimeout(function(){
-      if(mv.canActivateAR){ set('<b>AR доступно.</b> Нажмите «Поставить в комнату».'); }
-      else { set('На этом устройстве AR не запускается. Откройте страницу на телефоне: Android с сервисами Google Play для AR или iPhone.'); }
+      if(isAndroid || mv.canActivateAR){ set('<b>AR доступно.</b> Нажмите «Поставить в комнату», откроется камера.'); }
+      else { set('На этом устройстве AR не запускается. Откройте страницу на телефоне: Android или iPhone.'); }
     },300);
   });
   mv.addEventListener('ar-status',function(e){
-    if(e.detail.status==='failed'){ set('AR не запустилось. Проверьте, что установлены «Сервисы Google Play для AR» (Android) или откройте страницу в Safari (iPhone).'); }
+    if(e.detail.status==='failed'){ set('AR не запустилось. На iPhone откройте страницу в Safari.'); }
   });
   mv.addEventListener('error',function(){ set('Модель не загрузилась. Обновите страницу.'); });
 })();
