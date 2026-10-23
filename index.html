@@ -46,11 +46,11 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 <div class="wrap">
   <header>
     <h1>AR-<span>фото</span></h1>
-    <div class="spec">Рост 1,70 м · двусторонняя фигура</div>
+    <div class="spec" id="spec">Рост 1,70 м · дата обновляется каждый день</div>
   </header>
 
   <div class="stage">
-    <model-viewer id="mv" src="standee.glb" alt="Фигура в полный рост, вид спереди и сзади"
+    <model-viewer id="mv" alt="Фигура в полный рост с табличкой, на которой сегодняшняя дата"
       ar ar-modes="scene-viewer quick-look webxr" ar-scale="fixed" ar-placement="floor"
       camera-controls touch-action="pan-y" camera-target="0m 0.88m 0m" camera-orbit="-15deg 82deg 4.2m"
       min-camera-orbit="auto 40deg 1.5m" max-camera-orbit="auto 95deg 6m"
@@ -86,7 +86,10 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
   var ua=navigator.userAgent, isAndroid=/Android/i.test(ua);
   var isChrome=/Chrome\//.test(ua) && !/YaBrowser|SamsungBrowser|OPR\/|EdgA|MiuiBrowser|HuaweiBrowser|HeyTapBrowser|; wv\)/.test(ua);
   function set(html){st.innerHTML=html;}
-  var model=new URL('standee.glb', location.href).href;
+  /* дата по Екатеринбургу: модель пересобирается каждую ночь, а дата в адресе не даёт телефону взять вчерашнюю из кэша */
+  var d=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Yekaterinburg',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()).replace(/-/g,'');
+  var model=new URL('standee.glb?d='+d, location.href).href;
+  mv.src=model;
   var page=location.href.split('#')[0];
   function sv(pkg, mode){
     return 'intent://arvr.google.com/scene-viewer/1.0?file='+encodeURIComponent(model)+
