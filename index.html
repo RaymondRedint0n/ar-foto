@@ -66,14 +66,14 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
     <p class="fb-title">Камера не открылась? Попробуйте по порядку:</p>
     <div class="fb-list">
       <button class="btn" id="fbGoogle" type="button">Открыть через приложение Google</button>
-      <button class="btn" id="fbWebxr" type="button" hidden>Запустить AR прямо в Chrome</button>
+      <button class="btn" id="fbScene" type="button">Открыть в приложении Scene Viewer</button>
       <a class="btn" id="chromeLink" href="#" hidden>Открыть эту страницу в Chrome</a>
       <a class="btn ghost" href="https://play.google.com/store/apps/details?id=com.google.ar.core" target="_blank" rel="noopener">Установить «Сервисы Google Play для AR»</a>
     </div>
   </div>
 
   <div class="steps">
-    <div class="step"><h2>Android</h2><p>«Поставить в комнату» откроет камеру. Медленно поводите телефоном над полом, фигура встанет в реальном размере. Фото — обычный скриншот. Если телефон попросит «Сервисы Google Play для AR», установите их из Play Маркета.</p></div>
+    <div class="step"><h2>Android</h2><p>Откройте страницу в Chrome и нажмите «Поставить в комнату». Разрешите доступ к камере, медленно поводите телефоном над полом, фигура встанет в реальном размере. Фото — обычный скриншот. Нужны «Сервисы Google Play для AR» из Play Маркета.</p></div>
     <div class="step"><h2>iPhone</h2><p>Safari → «Поставить в комнату». Откроется Quick Look, внизу есть кнопка съёмки фото и видео.</p></div>
     <div class="step"><h2>Как снимать</h2><p>Встаньте рядом с фигурой, второй человек снимает. Фигуру можно двигать и поворачивать пальцем, со спины она тоже прорисована.</p></div>
   </div>
@@ -107,28 +107,34 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
   }
   document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') clearTimeout(timer); });
 
+  var chromeIntent='intent://'+page.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end;';
+  var arBtn=document.getElementById('arBtn');
+  var useWebXR=isAndroid && isChrome && !!navigator.xr;
   if(isAndroid){
-    stage.addEventListener('click',function(e){
-      if(e.target.closest && e.target.closest('#arBtn')){ e.preventDefault(); e.stopImmediatePropagation(); launch(sv('com.google.ar.core','ar_only')); }
-    },true);
+    /* Chrome: AR прямо в браузере (WebXR) — модель уже загружена страницей, стороннее приложение не нужно */
+    if(useWebXR){ mv.setAttribute('ar-modes','webxr'); }
+    else {
+      /* другой браузер: главная кнопка открывает эту страницу в Chrome */
+      arBtn.textContent='Открыть в Chrome';
+      stage.addEventListener('click',function(e){
+        if(e.target.closest && e.target.closest('#arBtn')){ e.preventDefault(); e.stopImmediatePropagation(); launch(chromeIntent); }
+      },true);
+      var cl=document.getElementById('chromeLink'); cl.href=chromeIntent; cl.hidden=false;
+    }
+    document.getElementById('fbScene').addEventListener('click',function(){ launch(sv('com.google.ar.core','ar_only')); });
     document.getElementById('fbGoogle').addEventListener('click',function(){ launch(sv('com.google.android.googlequicksearchbox','ar_preferred')); });
-    if(isChrome && navigator.xr){
-      var wx=document.getElementById('fbWebxr'); wx.hidden=false;
-      wx.addEventListener('click',function(){ mv.setAttribute('ar-modes','webxr'); mv.activateAR(); });
-    }
-    if(!isChrome){
-      var cl=document.getElementById('chromeLink');
-      cl.href='intent://'+page.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end;';
-      cl.hidden=false;
-    }
   }
   if(location.hash==='#noar'){ set('На телефоне нет «Сервисов Google Play для AR» или они устарели.'); showFallback(); }
   mv.addEventListener('load',function(){
     if(location.hash==='#noar') return;
     setTimeout(function(){
-      if(isAndroid || mv.canActivateAR){ set('<b>AR доступно.</b> Нажмите «Поставить в комнату», откроется камера.'); }
+      if(useWebXR){
+        if(mv.canActivateAR){ set('<b>AR доступно.</b> Нажмите «Поставить в комнату», разрешите доступ к камере и наведите телефон на пол.'); }
+        else { set('Chrome не может запустить AR: установите «Сервисы Google Play для AR» из Play Маркета и обновите страницу.'); showFallback(); }
+      } else if(isAndroid){ set('Для AR нужен браузер Chrome. Нажмите «Открыть в Chrome».'); }
+      else if(mv.canActivateAR){ set('<b>AR доступно.</b> Нажмите «Поставить в комнату», откроется камера.'); }
       else { set('На этом устройстве AR не запускается. Откройте страницу на телефоне: Android или iPhone.'); }
-    },300);
+    },1200);
   });
   mv.addEventListener('ar-status',function(e){
     if(e.detail.status==='failed'){ set('AR не запустилось.'); if(isAndroid) showFallback(); }
