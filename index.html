@@ -41,6 +41,36 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 .btn{display:block;text-align:center;border:1px solid var(--accent);background:transparent;color:var(--fg);font:600 15px/1.3 var(--body);padding:11px 14px;border-radius:4px;text-decoration:none;cursor:pointer}
 .btn.ghost{border-color:var(--line);color:var(--muted)}
 @media (prefers-reduced-motion:reduce){model-viewer{--auto-rotate:none}}
+.photo-btn{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;border:1px solid var(--accent);background:transparent;color:var(--fg);
+  font-family:var(--display);font-size:17px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:12px 16px;border-radius:4px;cursor:pointer}
+.photo-btn small{font-family:var(--body);font-size:12px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted)}
+.photo-btn:focus-visible{outline:2px solid var(--fg);outline-offset:3px}
+/* режим «Фото с фигурой»: камера на весь экран, фигура поверх */
+.cam{position:fixed;inset:0;z-index:50;background:#000;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam.mirror video{transform:scaleX(-1)}
+.cam #camFig{position:absolute;left:0;top:0;max-width:none;transform-origin:50% 50%;pointer-events:none;-webkit-user-drag:none;filter:drop-shadow(0 6px 10px rgba(0,0,0,.35))}
+.cam-tip{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));
+  text-align:center;font-size:13px;color:#fff;background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,0));pointer-events:none;transition:opacity .4s}
+.cam-bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:space-around;gap:8px;
+  padding:14px max(12px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 18px) max(12px,env(safe-area-inset-left,0px));background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.6))}
+.cam-ctl{width:54px;height:54px;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;font:600 13px/1 var(--body);display:grid;place-items:center;cursor:pointer;padding:0}
+.cam-ctl svg{width:24px;height:24px}
+.cam-ctl[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.cam-ctl:focus-visible,.shutter:focus-visible,.res-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.shutter{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:var(--accent);cursor:pointer;padding:0;box-shadow:0 0 0 2px rgba(0,0,0,.25)}
+.shutter:active{transform:scale(.94)}
+.cam-count{position:absolute;inset:0;display:grid;place-items:center;font:600 120px/1 var(--display);color:#fff;text-shadow:0 4px 20px rgba(0,0,0,.6);pointer-events:none}
+.cam-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
+.cam-flash.on{opacity:.85;transition:none}
+.cam-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center;color:#fff;background:#111}
+.cam-msg p{margin:0;max-width:34ch;line-height:1.5}
+.cam-result{position:absolute;inset:0;background:#000;display:flex;flex-direction:column}
+.cam-result img{flex:1;min-height:0;width:100%;object-fit:contain}
+.res-bar{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;padding:14px max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 18px) max(16px,env(safe-area-inset-left,0px))}
+.res-btn{border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;font:600 15px/1 var(--body);padding:13px 18px;border-radius:4px;cursor:pointer}
+.res-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.res-note{color:#cfcfcf;font-size:13px;text-align:center;margin:0;padding:0 16px 6px;min-height:1.2em}
 </style>
 
 <div class="wrap">
@@ -61,10 +91,13 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
     <span class="hint">Покрутите пальцем</span>
   </div>
 
+  <button class="photo-btn" id="photoBtn" type="button">Фото с фигурой<small>Камера телефона + фигура рядом. Работает на любом телефоне, без AR</small></button>
+
   <p class="status" id="status">Проверяю, поддерживает ли устройство AR…</p>
   <div class="fallback" id="fallback" hidden>
     <p class="fb-title">Камера не открылась? Попробуйте по порядку:</p>
     <div class="fb-list">
+      <button class="btn" id="fbPhoto" type="button">Сделать фото с фигурой (без AR)</button>
       <button class="btn" id="fbGoogle" type="button">Открыть через приложение Google</button>
       <button class="btn" id="fbScene" type="button">Открыть в приложении Scene Viewer</button>
       <a class="btn" id="chromeLink" href="#" hidden>Открыть эту страницу в Chrome</a>
@@ -75,9 +108,35 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
   <div class="steps">
     <div class="step"><h2>Android</h2><p>Откройте страницу в Chrome и нажмите «Поставить в комнату». Разрешите доступ к камере, медленно поводите телефоном над полом, фигура встанет в реальном размере. Фото — обычный скриншот. Нужны «Сервисы Google Play для AR» из Play Маркета.</p></div>
     <div class="step"><h2>iPhone</h2><p>Safari → «Поставить в комнату». Откроется Quick Look, внизу есть кнопка съёмки фото и видео.</p></div>
-    <div class="step"><h2>Как снимать</h2><p>Встаньте рядом с фигурой, второй человек снимает. Фигуру можно двигать и поворачивать пальцем, со спины она тоже прорисована.</p></div>
+    <div class="step"><h2>Без AR</h2><p>«Фото с фигурой» включает обычную камеру. Двигайте фигуру пальцем, двумя пальцами меняйте размер. Встаньте рядом и нажмите оранжевую кнопку или включите таймер на 3 секунды.</p></div>
   </div>
 </div>
+
+<div class="cam" id="cam" hidden>
+  <video id="camVideo" playsinline muted autoplay></video>
+  <img id="camFig" alt="" draggable="false">
+  <div class="cam-tip" id="camTip">Двигайте фигуру пальцем. Двумя пальцами — размер и поворот</div>
+  <div class="cam-count" id="camCount" hidden></div>
+  <div class="cam-flash" id="camFlash"></div>
+  <div class="cam-bar">
+    <button class="cam-ctl" id="camClose" type="button" aria-label="Закрыть камеру"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <button class="cam-ctl" id="camSide" type="button" aria-pressed="false" aria-label="Показать фигуру со спины">Спина</button>
+    <button class="shutter" id="camShot" type="button" aria-label="Сделать снимок"></button>
+    <button class="cam-ctl" id="camTimer" type="button" aria-pressed="false" aria-label="Таймер 3 секунды">3 с</button>
+    <button class="cam-ctl" id="camSwitch" type="button" aria-label="Сменить камеру"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2"/><path d="M20 4v4h-4M4 20v-4h4"/></svg></button>
+  </div>
+  <div class="cam-msg" id="camMsg" hidden><p id="camMsgText"></p><button class="res-btn primary" id="camMsgClose" type="button">Закрыть</button></div>
+  <div class="cam-result" id="camResult" hidden>
+    <img id="camPhoto" alt="Готовое фото с фигурой">
+    <p class="res-note" id="resNote"></p>
+    <div class="res-bar">
+      <button class="res-btn" id="resRetake" type="button">Ещё раз</button>
+      <button class="res-btn" id="resShare" type="button" hidden>Поделиться</button>
+      <button class="res-btn primary" id="resSave" type="button">Сохранить</button>
+    </div>
+  </div>
+</div>
+
 
 <script>
 (function(){
@@ -130,7 +189,7 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
     setTimeout(function(){
       if(useWebXR){
         if(mv.canActivateAR){ set('<b>AR доступно.</b> Нажмите «Поставить в комнату», разрешите доступ к камере и наведите телефон на пол.'); }
-        else { set('Chrome не может запустить AR: установите «Сервисы Google Play для AR» из Play Маркета и обновите страницу.'); showFallback(); }
+        else { set('AR на этом телефоне недоступно. Нажмите «Фото с фигурой» — это работает без AR.'); showFallback(); }
       } else if(isAndroid){ set('Для AR нужен браузер Chrome. Нажмите «Открыть в Chrome».'); }
       else if(mv.canActivateAR){ set('<b>AR доступно.</b> Нажмите «Поставить в комнату», откроется камера.'); }
       else { set('На этом устройстве AR не запускается. Откройте страницу на телефоне: Android или iPhone.'); }
@@ -140,6 +199,150 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
     if(e.detail.status==='failed'){ set('AR не запустилось.'); if(isAndroid) showFallback(); }
   });
   mv.addEventListener('error',function(){ set('Модель не загрузилась. Обновите страницу.'); });
+})();
+</script>
+
+<script>
+/* «Фото с фигурой»: обычная камера телефона + фигура с сегодняшней датой поверх. AR и ARCore не нужны. */
+(function(){
+  var $=function(id){return document.getElementById(id);};
+  var cam=$('cam'), video=$('camVideo'), fig=$('camFig'), tip=$('camTip');
+  var d=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Yekaterinburg',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()).replace(/-/g,'');
+  var SRC={front:'figure.png?d='+d, back:'figure-back.png?d='+d};
+  var side='front', facing='environment', stream=null, timerOn=false, busy=false, photoBlob=null, photoUrl=null;
+  var st={cx:0,cy:0,h:0,a:0};             /* центр фигуры, высота в px экрана, поворот в радианах */
+  var aspect=0.45;
+
+  function W(){return cam.clientWidth;} function H(){return cam.clientHeight;}
+  function render(){
+    var w=st.h*aspect;
+    fig.style.width=w+'px'; fig.style.height=st.h+'px';
+    fig.style.transform='translate('+(st.cx-w/2)+'px,'+(st.cy-st.h/2)+'px) rotate('+st.a+'rad)';
+  }
+  function placeDefault(){
+    st.h=H()*0.78; st.a=0;
+    st.cx=W()*0.66; st.cy=H()-st.h/2-110;
+    render();
+  }
+  function setSide(s, keep){
+    side=s; $('camSide').setAttribute('aria-pressed', s==='back'?'true':'false');
+    fig.onload=function(){ aspect=fig.naturalWidth/fig.naturalHeight; if(keep) render(); else placeDefault(); };
+    fig.src=SRC[s];
+  }
+
+  function showMsg(text){ $('camMsgText').textContent=text; $('camMsg').hidden=false; }
+  function stopStream(){ if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream=null; } }
+  function startCamera(){
+    stopStream();
+    cam.classList.toggle('mirror', facing==='user');
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      showMsg('Этот браузер не даёт доступ к камере. Откройте страницу в Chrome (Android) или Safari (iPhone).'); return;
+    }
+    navigator.mediaDevices.getUserMedia({audio:false, video:{facingMode:{ideal:facing}, width:{ideal:1920}, height:{ideal:1080}}})
+      .then(function(s){ stream=s; video.srcObject=s; return video.play(); })
+      .catch(function(e){
+        if(e && (e.name==='NotAllowedError'||e.name==='SecurityError')) showMsg('Нет доступа к камере. Нажмите значок слева от адреса сайта → «Разрешения» → «Камера» → «Разрешить», затем откройте режим снова.');
+        else if(e && e.name==='NotFoundError') showMsg('Камера не найдена.');
+        else showMsg('Не удалось включить камеру. Закройте другие приложения, которые её используют, и попробуйте снова.');
+      });
+  }
+
+  function open(){
+    cam.hidden=false; $('camMsg').hidden=true; $('camResult').hidden=true;
+    tip.style.opacity=1; setTimeout(function(){ tip.style.opacity=0; },5000);
+    try{ history.pushState({cam:1},''); }catch(e){}
+    setSide('front', false);
+    startCamera();
+  }
+  function close(fromPop){
+    stopStream(); cam.hidden=true;
+    if(photoUrl){ URL.revokeObjectURL(photoUrl); photoUrl=null; }
+    if(!fromPop){ try{ if(history.state && history.state.cam) history.back(); }catch(e){} }
+  }
+  window.addEventListener('popstate',function(){ if(!cam.hidden) close(true); });
+  window.addEventListener('resize',function(){ if(!cam.hidden && fig.naturalWidth){ st.cx=Math.min(Math.max(st.cx,0),W()); st.cy=Math.min(Math.max(st.cy,0),H()); render(); } });
+
+  /* жесты: один палец — двигать, два — масштаб и поворот */
+  var pts={};
+  function pair(){ var k=Object.keys(pts); if(k.length<2) return null; var a=pts[k[0]], b=pts[k[1]];
+    return {d:Math.hypot(b.x-a.x,b.y-a.y), ang:Math.atan2(b.y-a.y,b.x-a.x), mx:(a.x+b.x)/2, my:(a.y+b.y)/2}; }
+  cam.addEventListener('pointerdown',function(e){
+    if(e.target.closest('button') || !$('camResult').hidden || !$('camMsg').hidden) return;
+    pts[e.pointerId]={x:e.clientX,y:e.clientY}; try{ cam.setPointerCapture(e.pointerId); }catch(_){}
+    tip.style.opacity=0;
+  });
+  cam.addEventListener('pointermove',function(e){
+    if(!pts[e.pointerId]) return;
+    var before=pair(), prev=pts[e.pointerId];
+    var dx=e.clientX-prev.x, dy=e.clientY-prev.y;
+    pts[e.pointerId]={x:e.clientX,y:e.clientY};
+    var after=pair();
+    if(before && after){
+      var k=after.d/Math.max(before.d,1);
+      st.h=Math.min(Math.max(st.h*k, H()*0.15), H()*2.5);
+      st.a+=after.ang-before.ang;
+      st.cx+=after.mx-before.mx; st.cy+=after.my-before.my;
+    } else if(Object.keys(pts).length===1){ st.cx+=dx; st.cy+=dy; }
+    render();
+  });
+  function up(e){ delete pts[e.pointerId]; }
+  cam.addEventListener('pointerup',up); cam.addEventListener('pointercancel',up);
+  cam.addEventListener('wheel',function(e){ e.preventDefault(); st.h=Math.min(Math.max(st.h*(e.deltaY<0?1.06:0.94),H()*0.15),H()*2.5); render(); },{passive:false});
+
+  /* снимок: кадр камеры (как на экране) + фигура в том же месте */
+  function shoot(){
+    var vw=video.videoWidth, vh=video.videoHeight;
+    if(!vw){ return; }
+    var s=Math.max(W()/vw, H()/vh), sw=W()/s, sh=H()/s, sx=(vw-sw)/2, sy=(vh-sh)/2;
+    var c=document.createElement('canvas'); c.width=Math.round(sw); c.height=Math.round(sh);
+    var g=c.getContext('2d');
+    if(facing==='user'){ g.save(); g.translate(c.width,0); g.scale(-1,1); }
+    g.drawImage(video, sx,sy,sw,sh, 0,0,c.width,c.height);
+    if(facing==='user') g.restore();
+    var k=c.width/W(), w=st.h*aspect;
+    g.save(); g.translate(st.cx*k, st.cy*k); g.rotate(st.a);
+    g.shadowColor='rgba(0,0,0,.35)'; g.shadowBlur=10*k; g.shadowOffsetY=6*k;
+    g.drawImage(fig, -w*k/2, -st.h*k/2, w*k, st.h*k); g.restore();
+    var fl=$('camFlash'); fl.classList.add('on'); setTimeout(function(){ fl.classList.remove('on'); },60);
+    c.toBlob(function(b){
+      photoBlob=b; if(photoUrl) URL.revokeObjectURL(photoUrl); photoUrl=URL.createObjectURL(b);
+      $('camPhoto').src=photoUrl; $('resNote').textContent='';
+      var file=new File([b], fileName(), {type:'image/jpeg'});
+      $('resShare').hidden=!(navigator.canShare && navigator.canShare({files:[file]}));
+      $('camResult').hidden=false;
+    }, 'image/jpeg', 0.92);
+  }
+  function fileName(){ var n=new Date(); function p(x){return (x<10?'0':'')+x;}
+    return 'ar-foto-'+n.getFullYear()+p(n.getMonth()+1)+p(n.getDate())+'-'+p(n.getHours())+p(n.getMinutes())+p(n.getSeconds())+'.jpg'; }
+  function countdown(n, done){
+    var el=$('camCount'); el.hidden=false; el.textContent=n;
+    var t=setInterval(function(){ n--; if(n<=0){ clearInterval(t); el.hidden=true; done(); } else el.textContent=n; },1000);
+  }
+
+  $('photoBtn').addEventListener('click',open);
+  $('fbPhoto').addEventListener('click',open);
+  $('camClose').addEventListener('click',function(){ close(false); });
+  $('camMsgClose').addEventListener('click',function(){ close(false); });
+  $('camSwitch').addEventListener('click',function(){ facing=facing==='environment'?'user':'environment'; startCamera(); });
+  $('camSide').addEventListener('click',function(){ setSide(side==='front'?'back':'front', true); });
+  $('camTimer').addEventListener('click',function(){ timerOn=!timerOn; this.setAttribute('aria-pressed', timerOn?'true':'false'); });
+  $('camShot').addEventListener('click',function(){
+    if(busy) return; busy=true;
+    var go=function(){ shoot(); busy=false; };
+    if(timerOn) countdown(3, go); else go();
+  });
+  $('resRetake').addEventListener('click',function(){ $('camResult').hidden=true; });
+  $('resSave').addEventListener('click',function(){
+    if(!photoUrl) return;
+    var a=document.createElement('a'); a.href=photoUrl; a.download=fileName();
+    document.body.appendChild(a); a.click(); a.remove();
+    $('resNote').textContent='Фото скачивается в папку «Загрузки». В галерее оно появится через несколько секунд.';
+  });
+  $('resShare').addEventListener('click',function(){
+    if(!photoBlob) return;
+    var file=new File([photoBlob], fileName(), {type:'image/jpeg'});
+    navigator.share({files:[file], title:'AR-фото'}).catch(function(){});
+  });
 })();
 </script>
 </body></html>
