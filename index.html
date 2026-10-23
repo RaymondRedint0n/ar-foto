@@ -1,0 +1,84 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>AR-фото: Электромашина</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Manrope:wght@400;600&display=swap">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+<style>
+/* Layout: one screen — 3D-сцена во весь блок, под ней кнопка AR и короткая памятка */
+:root{
+  --bg:#141518; --panel:#1d1f23; --line:#2c2f35; --fg:#ece9e4; --muted:#9a9ca3;
+  --accent:#f26b14; --accent-ink:#1a0d03;
+  --display:"Oswald","Arial Narrow",Arial,sans-serif;
+  --body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:760px;margin:0 auto;padding-block:20px 28px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:16px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--display);font-weight:600;font-size:clamp(24px,6vw,34px);letter-spacing:.02em;text-transform:uppercase;margin:0;text-wrap:balance}
+h1 span{color:var(--accent)}
+.spec{font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;font-variant-numeric:tabular-nums}
+.stage{position:relative;border:1px solid var(--line);border-radius:6px;overflow:hidden;
+  background:radial-gradient(120% 80% at 50% 100%,#2a2219 0%,var(--panel) 55%,var(--bg) 100%)}
+model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--poster-color:transparent;--progress-bar-color:var(--accent)}
+.ar-btn{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);border:0;border-radius:4px;
+  background:var(--accent);color:var(--accent-ink);font-family:var(--display);font-size:17px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;padding:12px 22px;cursor:pointer;white-space:nowrap}
+.ar-btn:focus-visible,.btn:focus-visible{outline:2px solid var(--fg);outline-offset:3px}
+.hint{position:absolute;top:12px;left:12px;font-size:12px;color:var(--muted);background:rgba(20,21,24,.7);padding:4px 8px;border-radius:3px}
+.status{font-size:14px;color:var(--muted);margin:0}
+.status b{color:var(--fg)}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.step{border-top:2px solid var(--line);padding-top:10px;min-width:0}
+.step h2{font-family:var(--display);font-weight:500;font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 4px;color:var(--accent)}
+.step p{margin:0;color:var(--fg);font-size:14px}
+@media (prefers-reduced-motion:reduce){model-viewer{--auto-rotate:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>AR-<span>фото</span></h1>
+    <div class="spec">Рост 1,74 м · верстак 1,05 × 0,55 × 0,8 м</div>
+  </header>
+
+  <div class="stage">
+    <model-viewer id="mv" src="standee.glb" alt="Фигура в полный рост у стального верстака"
+      ar ar-modes="webxr scene-viewer quick-look" ar-scale="fixed" ar-placement="floor"
+      camera-controls touch-action="pan-y" camera-target="0m 0.95m 0.2m" camera-orbit="-22deg 80deg 4.4m"
+      min-camera-orbit="-75deg 40deg 1.5m" max-camera-orbit="75deg 95deg 6m"
+      shadow-intensity="1" shadow-softness="0.8" exposure="1.05" environment-image="neutral"
+      interaction-prompt="none">
+      <button slot="ar-button" class="ar-btn" id="arBtn">Поставить в комнату</button>
+    </model-viewer>
+    <span class="hint">Покрутите пальцем</span>
+  </div>
+
+  <p class="status" id="status">Проверяю, поддерживает ли устройство AR…</p>
+
+  <div class="steps">
+    <div class="step"><h2>Android</h2><p>Chrome → «Поставить в комнату». Наведите камеру на пол, фигура встанет в реальном размере. Фото — обычный скриншот.</p></div>
+    <div class="step"><h2>iPhone</h2><p>Safari → «Поставить в комнату». Откроется Quick Look, внизу есть кнопка съёмки фото и видео.</p></div>
+    <div class="step"><h2>Как снимать</h2><p>Встаньте рядом с верстаком, второй человек снимает. Фигуру можно двигать и поворачивать пальцем.</p></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var mv=document.getElementById('mv'), st=document.getElementById('status');
+  function set(html){st.innerHTML=html;}
+  mv.addEventListener('load',function(){
+    setTimeout(function(){
+      if(mv.canActivateAR){ set('<b>AR доступно.</b> Нажмите «Поставить в комнату».'); }
+      else { set('На этом устройстве AR не запускается. Откройте страницу на телефоне: Android с сервисами Google Play для AR или iPhone.'); }
+    },300);
+  });
+  mv.addEventListener('ar-status',function(e){
+    if(e.detail.status==='failed'){ set('AR не запустилось. Проверьте, что установлены «Сервисы Google Play для AR» (Android) или откройте страницу в Safari (iPhone).'); }
+  });
+  mv.addEventListener('error',function(){ set('Модель не загрузилась. Обновите страницу.'); });
+})();
+</script>
+</body></html>
