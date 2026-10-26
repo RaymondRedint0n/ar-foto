@@ -88,13 +88,13 @@ model-viewer::part(default-ar-button){display:none}
 <div class="wrap">
   <header>
     <h1>AR-<span>фото</span></h1>
-    <div class="spec" id="spec">Рост 1,70 м · дата обновляется каждый день</div>
+    <div class="spec" id="spec">В полный рост · дата обновляется каждый день</div>
   </header>
 
   <div class="stage">
     <model-viewer id="mv" alt="Фигура в полный рост с табличкой, на которой сегодняшняя дата"
       ar ar-modes="quick-look" ar-scale="fixed" ar-placement="floor"
-      camera-controls touch-action="pan-y" camera-target="0m 0.88m 0m" camera-orbit="-15deg 82deg 4.2m"
+      camera-controls touch-action="pan-y" camera-target="auto auto auto" camera-orbit="-15deg 82deg auto"
       min-camera-orbit="auto 40deg 1.5m" max-camera-orbit="auto 95deg 6m"
       shadow-intensity="1" shadow-softness="0.8" exposure="1.05" environment-image="neutral"
       interaction-prompt="none">

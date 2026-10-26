@@ -11,11 +11,18 @@ from trimesh.visual.material import PBRMaterial
 from trimesh.visual import TextureVisuals
 
 TZ = ZoneInfo('Asia/Yekaterinburg')      # дата меняется в полночь по Екатеринбургу
-HEIGHT = 1.70                            # рост фигуры от макушки до подошвы, м
 GAP = 0.004                              # половина толщины «картона», м
 ROOT = os.path.dirname(os.path.abspath(__file__))
-A = os.path.join(ROOT, 'assets')
+A = os.path.join(ROOT, 'assets')         # здесь же лежат шрифты
 OUT = os.path.join(ROOT, '_site')
+
+# Девушки календаря. Новая девушка = папка в assets (front.png, back.png, sign.json) + строка здесь.
+#   assets — папка с картинками, out — папка на сайте ('' = главная страница),
+#   height — высота силуэта от верхней точки (макушка или поднятая рука) до подошвы, м
+FIGURES = [
+    {'assets': 'assets',          'out': '',         'height': 1.70},
+    {'assets': 'assets/balerina', 'out': 'balerina', 'height': 1.98},   # рука поднята над головой, на пуантах
+]
 
 MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля',
           'августа', 'сентября', 'октября', 'ноября', 'декабря']
@@ -88,8 +95,8 @@ def perspective_coeffs(dst, src):
     return np.linalg.solve(np.array(M, float), np.array(B, float)).tolist()
 
 
-def front_with_date(d, meta):
-    front = Image.open(os.path.join(A, 'front.png')).convert('RGBA')
+def front_with_date(d, meta, folder=A):
+    front = Image.open(os.path.join(folder, 'front.png')).convert('RGBA')
     card = sign_card(d)
     q = meta['front_sign_inner']
     src = [(0, 0), (card.width, 0), (card.width, card.height), (0, card.height)]
@@ -129,28 +136,36 @@ def quad(im, S, front):
     return trimesh.Trimesh(np.array(v, float), f, visual=TextureVisuals(uv=np.array(uv, float), material=mat), process=False)
 
 
-def main():
-    d = today()
-    meta = json.load(open(os.path.join(A, 'sign.json')))
-    front = front_with_date(d, meta)
-    back = Image.open(os.path.join(A, 'back.png')).convert('RGBA')
+def build_figure(d, cfg):
+    folder = os.path.join(ROOT, cfg['assets'])
+    out = os.path.join(OUT, cfg['out'])
+    meta = json.load(open(os.path.join(folder, 'sign.json')))
+    front = front_with_date(d, meta, folder)
+    back = Image.open(os.path.join(folder, 'back.png')).convert('RGBA')
     t, b, _ = silhouette_info(front)
-    S = HEIGHT / (b - t)
+    S = cfg['height'] / (b - t)
     sc = trimesh.Scene()
     sc.add_geometry(quad(front, S, True), node_name='front', geom_name='front')
     sc.add_geometry(quad(back, S, False), node_name='back', geom_name='back')
-    os.makedirs(OUT, exist_ok=True)
-    sc.export(os.path.join(OUT, 'standee.glb'))
+    os.makedirs(out, exist_ok=True)
+    sc.export(os.path.join(out, 'standee.glb'))
     # картинки для режима «Фото с фигурой» (камера телефона + фигура поверх)
     for im, name in [(front, 'figure.png'), (back, 'figure-back.png')]:
         im = im.crop(im.getbbox())
         if im.height > 1600:
             im = im.resize((round(im.width * 1600 / im.height), 1600), Image.LANCZOS)
-        im.save(os.path.join(OUT, name), optimize=True)
-    shutil.copy(os.path.join(ROOT, 'index.html'), os.path.join(OUT, 'index.html'))
+        im.save(os.path.join(out, name), optimize=True)
+    shutil.copy(os.path.join(ROOT, 'index.html'), os.path.join(out, 'index.html'))
+    print('  ', cfg['out'] or '(главная)', '->', out)
+
+
+def main():
+    d = today()
+    print('built for', d.isoformat())
+    for cfg in FIGURES:
+        build_figure(d, cfg)
     with open(os.path.join(ROOT, 'last_build.txt'), 'w') as fh:
         fh.write(d.isoformat() + '\n')
-    print('built for', d.isoformat(), '->', OUT)
 
 
 if __name__ == '__main__':
