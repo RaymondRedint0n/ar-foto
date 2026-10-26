@@ -2,7 +2,8 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Manrope:wght@400;600&display=swap">
-<script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.3.1/dist/model-viewer.min.js"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
 <style>
 /* Layout: one screen — 3D-сцена во весь блок, под ней кнопка AR и короткая памятка */
 :root{
@@ -37,10 +38,21 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 .step p{margin:0;color:var(--fg);font-size:14px}
 .fallback{border:1px solid var(--line);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--panel)}
 .fb-title{margin:0;font-weight:600}
+.fb-text{margin:0;color:var(--muted);font-size:14px}
+.fb-text:empty{display:none}
 .fb-list{display:flex;flex-direction:column;gap:8px}
 .btn{display:block;text-align:center;border:1px solid var(--accent);background:transparent;color:var(--fg);font:600 15px/1.3 var(--body);padding:11px 14px;border-radius:4px;text-decoration:none;cursor:pointer}
 .btn.ghost{border-color:var(--line);color:var(--muted)}
 @media (prefers-reduced-motion:reduce){model-viewer{--auto-rotate:none}}
+model-viewer::part(default-ar-button){display:none}
+/* «Поставить в комнату»: свой AR (WebXR) или камера + гироскоп */
+.xr .xr-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.xr.webxr{background:transparent}
+.xr.webxr video,.xr.webxr .xr-canvas,.xr.webxr .shutter,.xr.webxr #xrTimer{display:none}
+.xr .cam-tip{transition:opacity .3s}
+.xr-escape{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 110px);border:1px solid rgba(255,255,255,.5);
+  background:rgba(0,0,0,.55);color:#fff;font:600 14px/1.2 var(--body);padding:11px 16px;border-radius:4px;cursor:pointer;white-space:nowrap}
+.xr-escape:focus-visible{outline:2px solid #fff;outline-offset:3px}
 .photo-btn{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;border:1px solid var(--accent);background:transparent;color:var(--fg);
   font-family:var(--display);font-size:17px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:12px 16px;border-radius:4px;cursor:pointer}
 .photo-btn small{font-family:var(--body);font-size:12px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted)}
@@ -81,19 +93,25 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 
   <div class="stage">
     <model-viewer id="mv" alt="Фигура в полный рост с табличкой, на которой сегодняшняя дата"
-      ar ar-modes="scene-viewer quick-look webxr" ar-scale="fixed" ar-placement="floor"
+      ar ar-modes="quick-look" ar-scale="fixed" ar-placement="floor"
       camera-controls touch-action="pan-y" camera-target="0m 0.88m 0m" camera-orbit="-15deg 82deg 4.2m"
       min-camera-orbit="auto 40deg 1.5m" max-camera-orbit="auto 95deg 6m"
       shadow-intensity="1" shadow-softness="0.8" exposure="1.05" environment-image="neutral"
       interaction-prompt="none">
-      <button slot="ar-button" class="ar-btn" id="arBtn">Поставить в комнату</button>
     </model-viewer>
+    <button class="ar-btn" id="arBtn" type="button">Поставить в комнату</button>
     <span class="hint">Покрутите пальцем</span>
   </div>
 
   <button class="photo-btn" id="photoBtn" type="button">Фото с фигурой<small>Камера телефона + фигура рядом. Работает на любом телефоне, без AR</small></button>
 
   <p class="status" id="status">Проверяю, поддерживает ли устройство AR…</p>
+  <div class="fallback" id="iosHint" hidden>
+    <p class="fb-title">Для AR на iPhone откройте страницу в Safari</p>
+    <p class="fb-text">В этом браузере iPhone показывает фигуру только как объект, без камеры. Скопируйте ссылку, откройте Safari и вставьте её в адресную строку. «Фото с фигурой» работает и здесь.</p>
+    <button class="btn" id="copyLink" type="button">Скопировать ссылку</button>
+    <p class="fb-text" id="copyNote" aria-live="polite"></p>
+  </div>
   <div class="fallback" id="fallback" hidden>
     <p class="fb-title">Камера не открылась? Попробуйте по порядку:</p>
     <div class="fb-list">
@@ -106,9 +124,35 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
   </div>
 
   <div class="steps">
-    <div class="step"><h2>Android</h2><p>Откройте страницу в Chrome и нажмите «Поставить в комнату». Разрешите доступ к камере, медленно поводите телефоном над полом, фигура встанет в реальном размере. Фото — обычный скриншот. Нужны «Сервисы Google Play для AR» из Play Маркета.</p></div>
-    <div class="step"><h2>iPhone</h2><p>Safari → «Поставить в комнату». Откроется Quick Look, внизу есть кнопка съёмки фото и видео.</p></div>
+    <div class="step"><h2>Android</h2><p>«Поставить в комнату» → разрешите камеру. Если телефон поддерживает AR, фигура встанет на пол, фото — скриншот. Если нет, включится камера с гироскопом: поворачивайте телефон, фигура останется на месте, снимок — оранжевой кнопкой.</p></div>
+    <div class="step"><h2>iPhone</h2><p>Только в Safari: «Поставить в комнату», затем вкладка «ДР» вверху. Внизу есть кнопка съёмки фото и видео. В других браузерах вкладка «ДР» серая.</p></div>
     <div class="step"><h2>Без AR</h2><p>«Фото с фигурой» включает обычную камеру. Двигайте фигуру пальцем, двумя пальцами меняйте размер. Встаньте рядом и нажмите оранжевую кнопку или включите таймер на 3 секунды.</p></div>
+  </div>
+</div>
+
+<div class="cam xr" id="xr" hidden>
+  <video id="xrVideo" playsinline muted autoplay></video>
+  <canvas class="xr-canvas" id="xrCanvas"></canvas>
+  <div class="cam-tip" id="xrTip"></div>
+  <button class="xr-escape" id="xrEscape" type="button" hidden>Чёрный экран? Включить простой режим</button>
+  <div class="cam-count" id="xrCount" hidden></div>
+  <div class="cam-flash" id="xrFlash"></div>
+  <div class="cam-bar">
+    <button class="cam-ctl" id="xrClose" type="button" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <button class="cam-ctl" id="xrHere" type="button" aria-label="Поставить фигуру перед собой">Сюда</button>
+    <button class="shutter" id="xrShot" type="button" aria-label="Сделать снимок"></button>
+    <button class="cam-ctl" id="xrTimer" type="button" aria-pressed="false" aria-label="Таймер 3 секунды">3 с</button>
+    <button class="cam-ctl" id="xrTurn" type="button" aria-label="Повернуть фигуру спиной">180°</button>
+  </div>
+  <div class="cam-msg" id="xrMsg" hidden><p id="xrMsgText"></p><button class="res-btn primary" id="xrMsgClose" type="button">Закрыть</button></div>
+  <div class="cam-result" id="xrResult" hidden>
+    <img id="xrPhoto" alt="Готовое фото с фигурой">
+    <p class="res-note" id="xrNote"></p>
+    <div class="res-bar">
+      <button class="res-btn" id="xrRetake" type="button">Ещё раз</button>
+      <button class="res-btn" id="xrShare" type="button" hidden>Поделиться</button>
+      <button class="res-btn primary" id="xrSave" type="button">Сохранить</button>
+    </div>
   </div>
 </div>
 
@@ -140,16 +184,21 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 
 <script>
 (function(){
-  var mv=document.getElementById('mv'), st=document.getElementById('status'), stage=document.querySelector('.stage');
-  var fb=document.getElementById('fallback');
+  var mv=document.getElementById('mv'), st=document.getElementById('status');
+  var fb=document.getElementById('fallback'), arBtn=document.getElementById('arBtn');
   var ua=navigator.userAgent, isAndroid=/Android/i.test(ua);
   var isChrome=/Chrome\//.test(ua) && !/YaBrowser|SamsungBrowser|OPR\/|EdgA|MiuiBrowser|HuaweiBrowser|HeyTapBrowser|; wv\)/.test(ua);
+  var isIOS=/iPhone|iPad|iPod/.test(ua) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  var iosOther=isIOS && /CriOS|FxiOS|EdgiOS|YaBrowser|OPiOS|GSA\/|Instagram|FBAN|FBAV|Line\/|VKClient|Telegram|MicroMessenger/i.test(ua);
+  var isMobile=isAndroid || isIOS || /Mobile/i.test(ua);
   function set(html){st.innerHTML=html;}
   /* дата по Екатеринбургу: модель пересобирается каждую ночь, а дата в адресе не даёт телефону взять вчерашнюю из кэша */
   var d=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Yekaterinburg',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()).replace(/-/g,'');
   var model=new URL('standee.glb?d='+d, location.href).href;
   mv.src=model;
   var page=location.href.split('#')[0];
+  window.__arInfo={isIOS:isIOS, iosOther:iosOther, isAndroid:isAndroid, isMobile:isMobile, model:model, setStatus:set};
+
   function sv(pkg, mode){
     return 'intent://arvr.google.com/scene-viewer/1.0?file='+encodeURIComponent(model)+
       '&mode='+mode+'&resizable=false&title='+encodeURIComponent('AR-фото')+
@@ -159,44 +208,49 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
   var timer=null;
   function showFallback(){ fb.hidden=false; fb.scrollIntoView({behavior:'smooth',block:'nearest'}); }
   function launch(url){
-    clearTimeout(timer);
-    location.href=url;
-    /* если через 2,5 с страница всё ещё на экране — приложение не открылось */
+    clearTimeout(timer); location.href=url;
     timer=setTimeout(function(){ if(document.visibilityState==='visible') showFallback(); },2500);
   }
   document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') clearTimeout(timer); });
 
-  var chromeIntent='intent://'+page.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end;';
-  var arBtn=document.getElementById('arBtn');
-  var useWebXR=isAndroid && isChrome && !!navigator.xr;
+  /* «Поставить в комнату»:
+     iPhone + Safari -> системный AR Quick Look;
+     Android и другие браузеры -> свой AR: WebXR с проверкой трекинга, при отказе — камера + гироскоп */
+  arBtn.addEventListener('click',function(){
+    if(isIOS && !iosOther && mv.canActivateAR){ mv.activateAR(); return; }
+    if(!isMobile){ set('Откройте эту страницу на телефоне: наведите камеру телефона на QR-код или отправьте себе ссылку.'); return; }
+    if(window.arStart){ window.arStart(); }
+    else { set('AR ещё загружается, нажмите кнопку ещё раз через пару секунд.'); }
+  });
+
   if(isAndroid){
-    /* Chrome: AR прямо в браузере (WebXR) — модель уже загружена страницей, стороннее приложение не нужно */
-    if(useWebXR){ mv.setAttribute('ar-modes','webxr'); }
-    else {
-      /* другой браузер: главная кнопка открывает эту страницу в Chrome */
-      arBtn.textContent='Открыть в Chrome';
-      stage.addEventListener('click',function(e){
-        if(e.target.closest && e.target.closest('#arBtn')){ e.preventDefault(); e.stopImmediatePropagation(); launch(chromeIntent); }
-      },true);
-      var cl=document.getElementById('chromeLink'); cl.href=chromeIntent; cl.hidden=false;
-    }
     document.getElementById('fbScene').addEventListener('click',function(){ launch(sv('com.google.ar.core','ar_only')); });
     document.getElementById('fbGoogle').addEventListener('click',function(){ launch(sv('com.google.android.googlequicksearchbox','ar_preferred')); });
+    if(!isChrome){
+      var cl=document.getElementById('chromeLink');
+      cl.href='intent://'+page.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end;';
+      cl.hidden=false;
+    }
+  } else {
+    document.getElementById('fbScene').hidden=true; document.getElementById('fbGoogle').hidden=true;
   }
-  if(location.hash==='#noar'){ set('На телефоне нет «Сервисов Google Play для AR» или они устарели.'); showFallback(); }
+  if(iosOther){
+    document.getElementById('iosHint').hidden=false;
+    document.getElementById('copyLink').addEventListener('click',function(){
+      var note=document.getElementById('copyNote');
+      try{
+        navigator.clipboard.writeText(page).then(function(){ note.textContent='Ссылка скопирована. Откройте Safari и вставьте её.'; },
+          function(){ note.textContent='Скопируйте вручную: '+page; });
+      }catch(e){ note.textContent='Скопируйте вручную: '+page; }
+    });
+  }
+  if(location.hash==='#noar'){ set('Приложение Google для AR не открылось. Нажмите «Поставить в комнату» или «Фото с фигурой».'); showFallback(); }
   mv.addEventListener('load',function(){
     if(location.hash==='#noar') return;
-    setTimeout(function(){
-      if(useWebXR){
-        if(mv.canActivateAR){ set('<b>AR доступно.</b> Нажмите «Поставить в комнату», разрешите доступ к камере и наведите телефон на пол.'); }
-        else { set('AR на этом телефоне недоступно. Нажмите «Фото с фигурой» — это работает без AR.'); showFallback(); }
-      } else if(isAndroid){ set('Для AR нужен браузер Chrome. Нажмите «Открыть в Chrome».'); }
-      else if(mv.canActivateAR){ set('<b>AR доступно.</b> Нажмите «Поставить в комнату», откроется камера.'); }
-      else { set('На этом устройстве AR не запускается. Откройте страницу на телефоне: Android или iPhone.'); }
-    },1200);
-  });
-  mv.addEventListener('ar-status',function(e){
-    if(e.detail.status==='failed'){ set('AR не запустилось.'); if(isAndroid) showFallback(); }
+    if(isIOS && !iosOther){ set(mv.canActivateAR ? '<b>Готово.</b> Нажмите «Поставить в комнату», затем вкладку «ДР» вверху.' : 'Нажмите «Поставить в комнату», откроется камера.'); }
+    else if(iosOther){ set('В этом браузере фигура откроется в режиме камеры. Для полноценного AR откройте страницу в Safari.'); }
+    else if(isMobile){ set('<b>Готово.</b> Нажмите «Поставить в комнату» и разрешите доступ к камере.'); }
+    else { set('Откройте эту страницу на телефоне, чтобы поставить фигуру в комнату.'); }
   });
   mv.addEventListener('error',function(){ set('Модель не загрузилась. Обновите страницу.'); });
 })();
@@ -344,5 +398,358 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
     navigator.share({files:[file], title:'AR-фото'}).catch(function(){});
   });
 })();
+</script>
+<script type="module">
+/* «Поставить в комнату» на Android и не-Safari.
+   1) Если телефон умеет WebXR — свой AR-сеанс. Проверяем, что ARCore реально отслеживает положение:
+      нет трекинга 7 с — выходим и включаем режим 2. Пол не найден за 4 с — ставим фигуру перед собой.
+   2) Камера + гироскоп: видео с камеры, поверх 3D-фигура; при повороте телефона фигура остаётся на месте. ARCore не нужен. */
+const $ = (id) => document.getElementById(id);
+const info = window.__arInfo || {};
+const root = $('xr'), video = $('xrVideo'), tipEl = $('xrTip'), escBtn = $('xrEscape');
+const MODEL = info.model || 'standee.glb';
+const CAM_H = 1.5;          // высота телефона над полом в режиме гироскопа, м
+const DIST = 3.0;           // на каком расстоянии ставить фигуру, м
+const LONG_FOV = 68;        // угол обзора основной камеры телефона по длинной стороне, градусы
+
+let THREE = null, GLTFLoader = null, figure = null, loading = null;
+let renderer = null, scene = null, camera = null, holder = null, reticle = null, canvas = $('xrCanvas');
+let mode = null, session = null, stream = null, raf = 0, fallbackReason = null;
+let userYaw = 0, timerOn = false, busy = false, photoBlob = null, photoUrl = null;
+let tipTimer = 0, escTimer = 0, ending = false;
+function endSession(reason) {   // завершить AR-сеанс один раз
+  if (!session || ending) return; ending = true; fallbackReason = reason;
+  session.end().catch(() => {});
+}
+
+function tip(t, ms) {
+  clearTimeout(tipTimer);
+  tipEl.textContent = t || ''; tipEl.style.opacity = t ? 1 : 0;
+  if (t && ms) tipTimer = setTimeout(() => { tipEl.style.opacity = 0; }, ms);
+}
+function showMsg(t) { $('xrMsgText').textContent = t; $('xrMsg').hidden = false; }
+
+/* ---------- загрузка three.js и модели (заранее, чтобы нажатие сработало мгновенно) ---------- */
+function loadAll() {
+  if (loading) return loading;
+  loading = (async () => {
+    THREE = await import('three');
+    ({ GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js'));
+    const g = await new GLTFLoader().loadAsync(MODEL);
+    figure = g.scene;
+    figure.traverse((o) => {
+      if (o.isMesh) {   // фото без освещения: цвета как на снимке, при любом свете в комнате
+        const m = o.material;
+        o.material = new THREE.MeshBasicMaterial({ map: m.map, alphaTest: 0.5, side: THREE.FrontSide });
+      }
+    });
+  })();
+  loading.catch(() => { loading = null; });
+  return loading;
+}
+if (info.isMobile) setTimeout(() => { loadAll().catch(() => {}); }, 1500);
+
+/* ---------- сцена ---------- */
+function freshCanvas() {   // новый canvas на каждый запуск: у WebXR и у режима камеры разные настройки WebGL
+  const c = document.createElement('canvas'); c.className = 'xr-canvas'; c.id = 'xrCanvas';
+  canvas.replaceWith(c); canvas = c;
+}
+function shadowMesh() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(0,0,0,0.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.5),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.003; return m;
+}
+function setupScene(xr) {
+  freshCanvas();
+  renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: !xr });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(root.clientWidth, root.clientHeight, false);
+  renderer.setClearColor(0x000000, 0);
+  renderer.xr.enabled = xr;
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(60, root.clientWidth / root.clientHeight, 0.05, 60);
+  holder = new THREE.Group(); holder.add(figure); holder.add(shadowMesh()); holder.visible = false;
+  scene.add(holder);
+  reticle = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.16, 40).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0xf26b14 }));
+  reticle.visible = false; scene.add(reticle);
+  userYaw = 0; holder.scale.setScalar(1);
+}
+function disposeScene() {
+  if (renderer) { renderer.setAnimationLoop(null); renderer.dispose(); }
+  if (holder && figure) holder.remove(figure);
+  renderer = scene = camera = holder = reticle = null;
+}
+function faceFrom(cx, cz) {   // повернуть фигуру лицом к зрителю
+  holder.rotation.y = Math.atan2(cx - holder.position.x, cz - holder.position.z) + userYaw;
+}
+
+/* ---------- режим 1: WebXR ---------- */
+async function startXR() {
+  mode = 'xr'; fallbackReason = null;
+  root.classList.add('webxr');
+  session = await navigator.xr.requestSession('immersive-ar', {
+    optionalFeatures: ['hit-test', 'local-floor', 'dom-overlay'], domOverlay: { root } });
+  setupScene(true);
+  let refType = 'local-floor';
+  try { await session.requestReferenceSpace('local-floor'); } catch (e) { refType = 'local'; }
+  renderer.xr.setReferenceSpaceType(refType);
+  await renderer.xr.setSession(session);
+  let hitSource = null;
+  try { const vs = await session.requestReferenceSpace('viewer'); hitSource = await session.requestHitTestSource({ space: vs }); } catch (e) {}
+
+  const V3 = THREE.Vector3, Q = THREE.Quaternion;
+  const t0 = performance.now(); let firstPose = 0, placed = false, lastHit = null; const camPos = new V3();
+  const place = (v) => { holder.position.copy(v); holder.visible = true; placed = true; faceFrom(camPos.x, camPos.z); };
+  const placeAhead = (pose) => {
+    const o = pose.transform.orientation, fwd = new V3(0, 0, -1).applyQuaternion(new Q(o.x, o.y, o.z, o.w));
+    fwd.y = 0; if (fwd.lengthSq() < 1e-4) fwd.set(0, 0, -1); fwd.normalize();
+    const floorY = refType === 'local-floor' ? 0 : camPos.y - 1.4;
+    place(new V3(camPos.x + fwd.x * 2.2, floorY, camPos.z + fwd.z * 2.2));
+  };
+  let lastPose = null;
+  session.addEventListener('select', () => { if (lastHit) place(lastHit); });
+  session.addEventListener('end', onXREnd);
+  $('xrHere').onclick = () => { if (lastHit) place(lastHit); else if (lastPose) placeAhead(lastPose); };
+
+  tip('Запускаю AR…');
+  escBtn.hidden = true; clearTimeout(escTimer);
+  escTimer = setTimeout(() => { if (mode === 'xr') escBtn.hidden = false; }, 3000);
+
+  renderer.setAnimationLoop((t, frame) => {
+    if (!frame) return;
+    const ref = renderer.xr.getReferenceSpace(), pose = frame.getViewerPose(ref), now = performance.now();
+    if (!pose) {
+      if (!firstPose && now - t0 > 7000) endSession('no-tracking');
+      renderer.render(scene, camera); return;
+    }
+    lastPose = pose;
+    if (!firstPose) { firstPose = now; tip('Медленно поводите телефоном над полом'); }
+    const p = pose.transform.position; camPos.set(p.x, p.y, p.z);
+    lastHit = null;
+    if (hitSource) {
+      const res = frame.getHitTestResults(hitSource);
+      if (res.length) { const hp = res[0].getPose(ref); if (hp) { const q = hp.transform.position; lastHit = new V3(q.x, q.y, q.z); } }
+    }
+    reticle.visible = !!lastHit; if (lastHit) reticle.position.copy(lastHit);
+    if (!placed) {
+      if (lastHit) { place(lastHit); tip('Готово! Нажмите на пол, чтобы переставить. Фото — скриншот телефона', 6000); escBtn.hidden = true; }
+      else if (now - firstPose > 4000) { placeAhead(pose); tip('Пол не найден — фигура поставлена перед вами. «Сюда» — переставить', 6000); escBtn.hidden = true; }
+    }
+    renderer.render(scene, camera);
+  });
+}
+function onXREnd() {
+  clearTimeout(escTimer); escBtn.hidden = true; ending = false;
+  disposeScene(); session = null; root.classList.remove('webxr');
+  if (fallbackReason) {
+    startGyro(fallbackReason === 'user' ? null : 'AR-трекинг на этом телефоне не работает — включил режим камеры');
+  } else { hideRoot(); }
+}
+escBtn.addEventListener('click', () => endSession('user'));
+root.addEventListener('beforexrselect', (e) => { if (e.target.closest && e.target.closest('button')) e.preventDefault(); });
+
+/* ---------- режим 2: камера + гироскоп ---------- */
+let oriTarget = null, gotOri = false, oriFirst = true;
+function onOri(e) {
+  if (e.alpha == null && e.beta == null && e.gamma == null) return;
+  const r = THREE.MathUtils.degToRad;
+  const angle = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  const euler = new THREE.Euler(r(e.beta || 0), r(e.alpha || 0), -r(e.gamma || 0), 'YXZ');
+  oriTarget.setFromEuler(euler);
+  oriTarget.multiply(new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)));       // камера смотрит из задней стороны телефона
+  oriTarget.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -r(angle)));
+  gotOri = true;
+}
+function fitView() {
+  if (!renderer) return;
+  const W = root.clientWidth, H = root.clientHeight;
+  renderer.setSize(W, H, false); camera.aspect = W / H;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (vw && vh) {   // подогнать угол обзора 3D-камеры под реальную камеру с учётом обрезки видео под экран
+    const f = (Math.max(vw, vh) / 2) / Math.tan(THREE.MathUtils.degToRad(LONG_FOV / 2));
+    const s = Math.max(W / vw, H / vh);
+    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan((H / s / 2) / f));
+  }
+  camera.updateProjectionMatrix();
+}
+function placeInFront() {
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  fwd.y = 0; if (fwd.lengthSq() < 1e-4) fwd.set(0, 0, -1); fwd.normalize();
+  holder.position.set(fwd.x * DIST, 0, fwd.z * DIST); holder.visible = true;
+  faceFrom(0, 0);
+}
+async function startGyro(msg) {
+  mode = 'gyro'; root.classList.remove('webxr'); root.hidden = false;
+  $('xrHere').onclick = () => placeInFront();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+  } catch (e) {
+    showMsg(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')
+      ? 'Нет доступа к камере. Нажмите значок слева от адреса сайта → «Разрешения» → «Камера» → «Разрешить», затем нажмите кнопку снова.'
+      : 'Не удалось включить камеру. Закройте другие приложения, которые её используют, и попробуйте снова.');
+    return;
+  }
+  video.srcObject = stream;
+  try { await video.play(); } catch (e) {}
+  setupScene(false);
+  camera.position.set(0, CAM_H, 0);
+  oriTarget = new THREE.Quaternion(); gotOri = false; oriFirst = true;
+  window.addEventListener('deviceorientation', onOri);
+  fitView(); video.addEventListener('loadedmetadata', fitView);
+  tip(msg || 'Поворачивайте телефон — фигура останется на месте. Пальцем можно передвинуть', 7000);
+  const tStart = performance.now(); let placed = false;
+  const loop = () => {
+    raf = requestAnimationFrame(loop);
+    if (gotOri) {
+      if (oriFirst) { camera.quaternion.copy(oriTarget); oriFirst = false; }
+      else camera.quaternion.slerp(oriTarget, 0.35);
+    }
+    if (!placed && (gotOri || performance.now() - tStart > 700)) { placeInFront(); placed = true; }
+    renderer.render(scene, camera);
+  };
+  loop();
+}
+function stopGyro() {
+  cancelAnimationFrame(raf); raf = 0;
+  window.removeEventListener('deviceorientation', onOri);
+  video.removeEventListener('loadedmetadata', fitView);
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  video.srcObject = null;
+  disposeScene();
+}
+window.addEventListener('resize', () => { if (mode === 'gyro') fitView(); });
+
+/* жесты в режиме камеры: один палец — двигать по полу, два — размер и поворот */
+const pts = {};
+let ray = null;
+function floorAt(x, y) {
+  const r = root.getBoundingClientRect();
+  if (!ray) ray = new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2((x - r.left) / r.width * 2 - 1, -((y - r.top) / r.height) * 2 + 1), camera);
+  const out = new THREE.Vector3();
+  return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), out) ? out : null;
+}
+function pair() {
+  const k = Object.keys(pts); if (k.length < 2) return null; const a = pts[k[0]], b = pts[k[1]];
+  return { d: Math.hypot(b.x - a.x, b.y - a.y), ang: Math.atan2(b.y - a.y, b.x - a.x) };
+}
+root.addEventListener('pointerdown', (e) => {
+  if (mode !== 'gyro' || !holder || e.target.closest('button') || !$('xrResult').hidden || !$('xrMsg').hidden) return;
+  pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+  try { root.setPointerCapture(e.pointerId); } catch (_) {}
+});
+root.addEventListener('pointermove', (e) => {
+  if (!pts[e.pointerId] || !holder) return;
+  const before = pair(), prev = pts[e.pointerId];
+  pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+  const after = pair();
+  if (before && after) {
+    const s = holder.scale.x * after.d / Math.max(before.d, 1);
+    holder.scale.setScalar(Math.min(Math.max(s, 0.5), 1.8));
+    userYaw -= after.ang - before.ang; faceFrom(0, 0);
+  } else if (Object.keys(pts).length === 1) {
+    const a = floorAt(prev.x, prev.y), b = floorAt(e.clientX, e.clientY);
+    if (a && b) {
+      holder.position.add(b.sub(a));
+      const len = Math.hypot(holder.position.x, holder.position.z);   // не дальше 12 м и не ближе 1,2 м
+      if (len > 12) holder.position.multiplyScalar(12 / len);
+      if (len < 1.2 && len > 0) holder.position.multiplyScalar(1.2 / len);
+      holder.position.y = 0; faceFrom(0, 0);
+    }
+  }
+});
+const up = (e) => { delete pts[e.pointerId]; };
+root.addEventListener('pointerup', up); root.addEventListener('pointercancel', up);
+
+/* снимок в режиме камеры: кадр камеры + 3D-фигура */
+function fileName() {
+  const n = new Date(), p = (x) => (x < 10 ? '0' : '') + x;
+  return 'ar-foto-' + n.getFullYear() + p(n.getMonth() + 1) + p(n.getDate()) + '-' + p(n.getHours()) + p(n.getMinutes()) + p(n.getSeconds()) + '.jpg';
+}
+function shoot() {
+  const W = root.clientWidth, H = root.clientHeight, vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !renderer) return;
+  const s = Math.max(W / vw, H / vh), sw = W / s, sh = H / s, sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+  const c = document.createElement('canvas'); c.width = Math.round(sw); c.height = Math.round(sh);
+  const g = c.getContext('2d');
+  g.drawImage(video, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  renderer.render(scene, camera);
+  g.drawImage(renderer.domElement, 0, 0, c.width, c.height);
+  const fl = $('xrFlash'); fl.classList.add('on'); setTimeout(() => fl.classList.remove('on'), 60);
+  c.toBlob((b) => {
+    photoBlob = b; if (photoUrl) URL.revokeObjectURL(photoUrl); photoUrl = URL.createObjectURL(b);
+    $('xrPhoto').src = photoUrl; $('xrNote').textContent = '';
+    const file = new File([b], fileName(), { type: 'image/jpeg' });
+    $('xrShare').hidden = !(navigator.canShare && navigator.canShare({ files: [file] }));
+    $('xrResult').hidden = false;
+  }, 'image/jpeg', 0.92);
+}
+$('xrShot').addEventListener('click', () => {
+  if (busy || mode !== 'gyro') return; busy = true;
+  const go = () => { shoot(); busy = false; };
+  if (!timerOn) { go(); return; }
+  let n = 3; const el = $('xrCount'); el.hidden = false; el.textContent = n;
+  const t = setInterval(() => { n--; if (n <= 0) { clearInterval(t); el.hidden = true; go(); } else el.textContent = n; }, 1000);
+});
+$('xrTimer').addEventListener('click', function () { timerOn = !timerOn; this.setAttribute('aria-pressed', timerOn ? 'true' : 'false'); });
+$('xrTurn').addEventListener('click', () => { if (!holder) return; userYaw += Math.PI; holder.rotation.y += Math.PI; });
+$('xrRetake').addEventListener('click', () => { $('xrResult').hidden = true; });
+$('xrSave').addEventListener('click', () => {
+  if (!photoUrl) return;
+  const a = document.createElement('a'); a.href = photoUrl; a.download = fileName();
+  document.body.appendChild(a); a.click(); a.remove();
+  $('xrNote').textContent = 'Фото скачивается в папку «Загрузки». В галерее оно появится через несколько секунд.';
+});
+$('xrShare').addEventListener('click', () => {
+  if (!photoBlob) return;
+  navigator.share({ files: [new File([photoBlob], fileName(), { type: 'image/jpeg' })], title: 'AR-фото' }).catch(() => {});
+});
+
+/* ---------- открыть / закрыть ---------- */
+function hideRoot() {
+  root.hidden = true; mode = null; tip('');
+  $('xrResult').hidden = true; $('xrMsg').hidden = true; $('xrCount').hidden = true;
+  if (photoUrl) { URL.revokeObjectURL(photoUrl); photoUrl = null; }
+}
+function closeAll(fromPop) {
+  if (session) endSession(null);
+  else { if (mode === 'gyro') stopGyro(); hideRoot(); }
+  if (!fromPop) { try { if (history.state && history.state.xr) history.back(); } catch (e) {} }
+}
+$('xrClose').addEventListener('click', () => closeAll(false));
+$('xrMsgClose').addEventListener('click', () => closeAll(false));
+window.addEventListener('popstate', () => { if (!root.hidden || session) closeAll(true); });
+
+window.arStart = async function () {
+  if (mode) return;
+  /* iPhone вне Safari: разрешение на гироскоп спрашивается только прямо в момент нажатия */
+  let oriPerm = null;
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    oriPerm = DeviceOrientationEvent.requestPermission().catch(() => 'denied');
+  }
+  let xrOK = false;
+  const xrCheck = (navigator.xr && !info.isIOS) ? navigator.xr.isSessionSupported('immersive-ar').catch(() => false) : Promise.resolve(false);
+  root.hidden = false; mode = 'loading'; tip('Загружаю фигуру…');
+  try { history.pushState({ xr: 1 }, ''); } catch (e) {}
+  try { await loadAll(); }
+  catch (e) {
+    hideRoot(); try { if (history.state && history.state.xr) history.back(); } catch (_) {}
+    if (info.setStatus) info.setStatus('Не удалось загрузить 3D-фигуру. Проверьте интернет или нажмите «Фото с фигурой».');
+    return;
+  }
+  xrOK = await xrCheck;
+  if (xrOK) {
+    try { await startXR(); return; }
+    catch (e) { disposeScene(); session = null; root.classList.remove('webxr'); }
+  }
+  if (oriPerm) await oriPerm;
+  startGyro(xrOK ? 'AR на этом телефоне не запустился — включил режим камеры' : null);
+};
 </script>
 </body></html>
