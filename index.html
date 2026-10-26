@@ -48,11 +48,8 @@ model-viewer::part(default-ar-button){display:none}
 /* «Поставить в комнату»: свой AR (WebXR) или камера + гироскоп */
 .xr .xr-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 .xr.webxr{background:transparent}
-.xr.webxr video,.xr.webxr .xr-canvas,.xr.webxr #xrSwitch,.xr.webxr:not(.xr-shot) .shutter,.xr.webxr:not(.xr-shot) #xrTimer{display:none}
+.xr.webxr video,.xr.webxr .xr-canvas,.xr.webxr:not(.xr-shot) .shutter,.xr.webxr:not(.xr-shot) #xrTimer{display:none}
 .xr.mirror .xr-canvas{transform:scaleX(-1)}
-.xr .cam-bar{gap:4px;justify-content:space-between}
-.xr .cam-ctl{width:48px;height:48px;font-size:12px}
-.xr .shutter{width:70px;height:70px}
 .xr .cam-tip{transition:opacity .3s}
 .xr-escape{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 110px);border:1px solid rgba(255,255,255,.5);
   background:rgba(0,0,0,.55);color:#fff;font:600 14px/1.2 var(--body);padding:11px 16px;border-radius:4px;cursor:pointer;white-space:nowrap}
@@ -67,16 +64,16 @@ model-viewer::part(default-ar-button){display:none}
 .cam.mirror video{transform:scaleX(-1)}
 .cam #camFig{position:absolute;left:0;top:0;max-width:none;transform-origin:50% 50%;pointer-events:none;-webkit-user-drag:none;filter:drop-shadow(0 6px 10px rgba(0,0,0,.35))}
 .cam-tip{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));
-  text-align:center;font-size:13px;color:#fff;background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,0));pointer-events:none;transition:opacity .4s}
-.cam-bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:space-around;gap:8px;
+  text-align:center;font-size:clamp(12px,3.6vw,16px);line-height:1.35;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,0));pointer-events:none;transition:opacity .4s}
+.cam-bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:space-evenly;gap:clamp(2px,1.5vw,10px);
   padding:14px max(12px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 18px) max(12px,env(safe-area-inset-left,0px));background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.6))}
-.cam-ctl{width:54px;height:54px;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;font:600 13px/1 var(--body);display:grid;place-items:center;cursor:pointer;padding:0}
-.cam-ctl svg{width:24px;height:24px}
+.cam-ctl{flex:none;width:clamp(40px,12.5vw,56px);height:clamp(40px,12.5vw,56px);border-radius:50%;border:0;background:rgba(0,0,0,.35);color:#fff;font:600 clamp(11px,3.3vw,14px)/1 var(--body);display:grid;place-items:center;cursor:pointer;padding:0;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.cam-ctl svg{width:45%;height:45%}
 .cam-ctl[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
 .cam-ctl:focus-visible,.shutter:focus-visible,.res-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
-.shutter{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:var(--accent);cursor:pointer;padding:0;box-shadow:0 0 0 2px rgba(0,0,0,.25)}
+.shutter{flex:none;width:clamp(56px,18vw,80px);height:clamp(56px,18vw,80px);border-radius:50%;border:clamp(3px,1.2vw,5px) solid #fff;background:var(--accent);cursor:pointer;padding:0;box-shadow:0 0 0 2px rgba(0,0,0,.25)}
 .shutter:active{transform:scale(.94)}
-.cam-count{position:absolute;inset:0;display:grid;place-items:center;font:600 120px/1 var(--display);color:#fff;text-shadow:0 4px 20px rgba(0,0,0,.6);pointer-events:none}
+.cam-count{position:absolute;inset:0;display:grid;place-items:center;font:600 clamp(72px,30vmin,140px)/1 var(--display);color:#fff;text-shadow:0 4px 20px rgba(0,0,0,.6);pointer-events:none}
 .cam-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
 .cam-flash.on{opacity:.85;transition:none}
 .cam-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center;color:#fff;background:#111}
@@ -84,9 +81,10 @@ model-viewer::part(default-ar-button){display:none}
 .cam-result{position:absolute;inset:0;background:#000;display:flex;flex-direction:column}
 .cam-result img{flex:1;min-height:0;width:100%;object-fit:contain}
 .res-bar{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;padding:14px max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 18px) max(16px,env(safe-area-inset-left,0px))}
-.res-btn{border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;font:600 15px/1 var(--body);padding:13px 18px;border-radius:4px;cursor:pointer}
+.res-btn{border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;font:600 clamp(14px,4vw,16px)/1 var(--body);padding:13px clamp(12px,4vw,20px);border-radius:4px;cursor:pointer}
 .res-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .res-note{color:#cfcfcf;font-size:13px;text-align:center;margin:0;padding:0 16px 6px;min-height:1.2em}
+@media (orientation:landscape) and (max-height:500px){.cam-bar{padding-top:6px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 8px)}.cam-ctl{width:44px;height:44px}.shutter{width:60px;height:60px}.cam-tip{font-size:12px;padding-top:calc(env(safe-area-inset-top,0px) + 6px)}.xr-escape{bottom:calc(env(safe-area-inset-bottom,0px) + 80px)}}
 </style>
 
 <div class="wrap">
@@ -545,7 +543,7 @@ async function startXR() {
       camAccess = !!(v && v.camera && typeof XRWebGLBinding !== 'undefined');
       root.classList.toggle('xr-shot', camAccess);
     }
-    if (!firstPose) { firstPose = now; tip('Медленно поводите телефоном над полом'); }
+    if (!firstPose) { firstPose = now; xrWorked = true; tip('Наведите камеру на пол в 1–3 метрах от себя'); }
     const p = pose.transform.position; camPos.set(p.x, p.y, p.z);
     lastHit = null;
     if (hitSource) {
@@ -554,8 +552,9 @@ async function startXR() {
     }
     reticle.visible = !!lastHit; if (lastHit) reticle.position.copy(lastHit);
     if (!placed) {
-      if (lastHit) { place(lastHit); tip(camAccess ? 'Готово! Нажмите на пол, чтобы переставить. Фото — оранжевая кнопка' : 'Готово! Нажмите на пол, чтобы переставить. Фото — скриншот телефона', 6000); escBtn.hidden = true; }
-      else if (now - firstPose > 4000) { placeAhead(pose); tip('Пол не найден — фигура поставлена перед вами. «Сюда» — переставить', 6000); escBtn.hidden = true; }
+      const floorLike = lastHit && Math.hypot(lastHit.x - camPos.x, lastHit.z - camPos.z) > 1.0 && camPos.y - lastHit.y > 0.9;
+      if (floorLike) { place(lastHit); tip(camAccess ? 'Готово! Нажмите на пол, чтобы переставить. Фото — оранжевая кнопка' : 'Готово! Нажмите на пол, чтобы переставить. Фото — скриншот телефона', 6000); escBtn.hidden = true; }
+      else if (now - firstPose > 6000) { placeAhead(pose); tip('Пол не найден — фигура поставлена перед вами. «Сюда» — переставить', 6000); escBtn.hidden = true; }
     }
     renderer.render(scene, camera);
     if (xrShotPending) { xrShotPending = false; try { captureXR(pose); } catch (e) { tip('Снимок не получился — сделайте скриншот телефона', 5000); } }
@@ -632,7 +631,10 @@ function captureXR(pose) {
 function onXREnd() {
   clearTimeout(escTimer); escBtn.hidden = true; ending = false;
   disposeScene(); session = null; root.classList.remove('webxr');
-  if (fallbackReason) {
+  if (fallbackReason === 'selfie') {
+    startGyro('Селфи: фигура у вас за спиной. Пальцем можно передвинуть. Стрелки — вернуться в AR', 'user');
+  } else if (fallbackReason) {
+    if (fallbackReason === 'no-tracking') xrWorked = false;
     startGyro(fallbackReason === 'user' ? null : 'AR-трекинг на этом телефоне не работает — включил режим камеры');
   } else { hideRoot(); }
 }
@@ -686,11 +688,11 @@ async function openCamera() {   // включить нужную камеру; �
   try { await video.play(); } catch (e) {}
   return true;
 }
-let needPlace = false;
+let needPlace = false, xrWorked = false;
 const FLIP = { q: null };   // поворот на 180° вокруг вертикали телефона: фронтальная камера смотрит в другую сторону
-async function startGyro(msg) {
+async function startGyro(msg, startFacing) {
   mode = 'gyro'; root.classList.remove('webxr'); root.hidden = false;
-  facing = 'environment';
+  facing = startFacing || 'environment';
   $('xrHere').onclick = () => placeInFront();
   if (!(await openCamera())) return;
   setupScene(false);
@@ -812,7 +814,17 @@ $('xrShot').addEventListener('click', () => {
   let n = 3; const el = $('xrCount'); el.hidden = false; el.textContent = n;
   const t = setInterval(() => { n--; if (n <= 0) { clearInterval(t); el.hidden = true; go(); } else el.textContent = n; }, 1000);
 });
-$('xrSwitch').addEventListener('click', () => { switchCamera(); });
+$('xrSwitch').addEventListener('click', () => {
+  if (mode === 'xr') { endSession('selfie'); return; }
+  if (mode !== 'gyro') return;
+  if (facing === 'user' && xrWorked) { backToXR(); return; }
+  switchCamera();
+});
+async function backToXR() {   // нажатие кнопки — разрешение браузера на запуск AR есть
+  stopGyro(); mode = 'loading'; tip('Запускаю AR…');
+  try { await startXR(); }
+  catch (e) { disposeScene(); session = null; root.classList.remove('webxr'); xrWorked = false; startGyro('AR не запустился — включил режим камеры'); }
+}
 $('xrTimer').addEventListener('click', function () { timerOn = !timerOn; this.setAttribute('aria-pressed', timerOn ? 'true' : 'false'); });
 $('xrTurn').addEventListener('click', () => { if (!holder) return; userYaw += Math.PI; holder.rotation.y += Math.PI; });
 $('xrRetake').addEventListener('click', () => { $('xrResult').hidden = true; });
