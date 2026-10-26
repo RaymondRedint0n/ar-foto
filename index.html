@@ -48,7 +48,11 @@ model-viewer::part(default-ar-button){display:none}
 /* «Поставить в комнату»: свой AR (WebXR) или камера + гироскоп */
 .xr .xr-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 .xr.webxr{background:transparent}
-.xr.webxr video,.xr.webxr .xr-canvas,.xr.webxr .shutter,.xr.webxr #xrTimer{display:none}
+.xr.webxr video,.xr.webxr .xr-canvas,.xr.webxr .shutter,.xr.webxr #xrTimer,.xr.webxr #xrSwitch{display:none}
+.xr.mirror .xr-canvas{transform:scaleX(-1)}
+.xr .cam-bar{gap:4px;justify-content:space-between}
+.xr .cam-ctl{width:48px;height:48px;font-size:12px}
+.xr .shutter{width:70px;height:70px}
 .xr .cam-tip{transition:opacity .3s}
 .xr-escape{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 110px);border:1px solid rgba(255,255,255,.5);
   background:rgba(0,0,0,.55);color:#fff;font:600 14px/1.2 var(--body);padding:11px 16px;border-radius:4px;cursor:pointer;white-space:nowrap}
@@ -143,6 +147,7 @@ model-viewer::part(default-ar-button){display:none}
     <button class="shutter" id="xrShot" type="button" aria-label="Сделать снимок"></button>
     <button class="cam-ctl" id="xrTimer" type="button" aria-pressed="false" aria-label="Таймер 3 секунды">3 с</button>
     <button class="cam-ctl" id="xrTurn" type="button" aria-label="Повернуть фигуру спиной">180°</button>
+    <button class="cam-ctl" id="xrSwitch" type="button" aria-label="Сменить камеру: задняя или фронтальная"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2"/><path d="M20 4v4h-4M4 20v-4h4"/></svg></button>
   </div>
   <div class="cam-msg" id="xrMsg" hidden><p id="xrMsgText"></p><button class="res-btn primary" id="xrMsgClose" type="button">Закрыть</button></div>
   <div class="cam-result" id="xrResult" hidden>
@@ -409,8 +414,10 @@ const info = window.__arInfo || {};
 const root = $('xr'), video = $('xrVideo'), tipEl = $('xrTip'), escBtn = $('xrEscape');
 const MODEL = info.model || 'standee.glb';
 const CAM_H = 1.5;          // высота телефона над полом в режиме гироскопа, м
-const DIST = 3.0;           // на каком расстоянии ставить фигуру, м
-const LONG_FOV = 68;        // угол обзора основной камеры телефона по длинной стороне, градусы
+const DIST = { environment: 3.0, user: 2.6 };   // на каком расстоянии ставить фигуру, м (для селфи — ближе)
+const LONG_FOV = { environment: 68, user: 76 }; // угол обзора камеры по длинной стороне, градусы
+let facing = 'environment';                      // 'environment' — задняя камера, 'user' — фронтальная
+let figScale = 1;
 
 let THREE = null, GLTFLoader = null, figure = null, loading = null;
 let renderer = null, scene = null, camera = null, holder = null, reticle = null, canvas = $('xrCanvas');
@@ -477,12 +484,15 @@ function setupScene(xr) {
   reticle = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.16, 40).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ color: 0xf26b14 }));
   reticle.visible = false; scene.add(reticle);
-  userYaw = 0; holder.scale.setScalar(1);
+  userYaw = 0; figScale = 1; applyScale();
 }
 function disposeScene() {
   if (renderer) { renderer.setAnimationLoop(null); renderer.dispose(); }
   if (holder && figure) holder.remove(figure);
   renderer = scene = camera = holder = reticle = null;
+}
+function applyScale() {
+  if (holder) holder.scale.set(facing === 'user' ? -figScale : figScale, figScale, figScale);
 }
 function faceFrom(cx, cz) {   // повернуть фигуру лицом к зрителю
   holder.rotation.y = Math.atan2(cx - holder.position.x, cz - holder.position.z) + userYaw;
@@ -571,7 +581,7 @@ function fitView() {
   renderer.setSize(W, H, false); camera.aspect = W / H;
   const vw = video.videoWidth, vh = video.videoHeight;
   if (vw && vh) {   // подогнать угол обзора 3D-камеры под реальную камеру с учётом обрезки видео под экран
-    const f = (Math.max(vw, vh) / 2) / Math.tan(THREE.MathUtils.degToRad(LONG_FOV / 2));
+    const f = (Math.max(vw, vh) / 2) / Math.tan(THREE.MathUtils.degToRad(LONG_FOV[facing] / 2));
     const s = Math.max(W / vw, H / vh);
     camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan((H / s / 2) / f));
   }
@@ -580,47 +590,70 @@ function fitView() {
 function placeInFront() {
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
   fwd.y = 0; if (fwd.lengthSq() < 1e-4) fwd.set(0, 0, -1); fwd.normalize();
-  holder.position.set(fwd.x * DIST, 0, fwd.z * DIST); holder.visible = true;
+  const dist = DIST[facing];
+  holder.position.set(fwd.x * dist, 0, fwd.z * dist); holder.visible = true;
   faceFrom(0, 0);
 }
-async function startGyro(msg) {
-  mode = 'gyro'; root.classList.remove('webxr'); root.hidden = false;
-  $('xrHere').onclick = () => placeInFront();
+async function openCamera() {   // включить нужную камеру; при ошибке — сообщение
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: false,
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
   } catch (e) {
     showMsg(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')
       ? 'Нет доступа к камере. Нажмите значок слева от адреса сайта → «Разрешения» → «Камера» → «Разрешить», затем нажмите кнопку снова.'
       : 'Не удалось включить камеру. Закройте другие приложения, которые её используют, и попробуйте снова.');
-    return;
+    return false;
   }
+  root.classList.toggle('mirror', facing === 'user');
   video.srcObject = stream;
   try { await video.play(); } catch (e) {}
+  return true;
+}
+let needPlace = false;
+const FLIP = { q: null };   // поворот на 180° вокруг вертикали телефона: фронтальная камера смотрит в другую сторону
+async function startGyro(msg) {
+  mode = 'gyro'; root.classList.remove('webxr'); root.hidden = false;
+  facing = 'environment';
+  $('xrHere').onclick = () => placeInFront();
+  if (!(await openCamera())) return;
   setupScene(false);
+  FLIP.q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
   camera.position.set(0, CAM_H, 0);
   oriTarget = new THREE.Quaternion(); gotOri = false; oriFirst = true;
   window.addEventListener('deviceorientation', onOri);
   fitView(); video.addEventListener('loadedmetadata', fitView);
   tip(msg || 'Поворачивайте телефон — фигура останется на месте. Пальцем можно передвинуть', 7000);
-  const tStart = performance.now(); let placed = false;
+  const tStart = performance.now(); needPlace = true;
+  const want = new THREE.Quaternion();
   const loop = () => {
     raf = requestAnimationFrame(loop);
     if (gotOri) {
-      if (oriFirst) { camera.quaternion.copy(oriTarget); oriFirst = false; }
-      else camera.quaternion.slerp(oriTarget, 0.35);
+      want.copy(oriTarget); if (facing === 'user') want.multiply(FLIP.q);
+      if (oriFirst) { camera.quaternion.copy(want); oriFirst = false; }
+      else camera.quaternion.slerp(want, 0.35);
     }
-    if (!placed && (gotOri || performance.now() - tStart > 700)) { placeInFront(); placed = true; }
+    if (needPlace && (gotOri || performance.now() - tStart > 700)) { placeInFront(); needPlace = false; }
     renderer.render(scene, camera);
   };
   loop();
+}
+async function switchCamera() {
+  if (mode !== 'gyro' || !renderer) return;
+  facing = facing === 'user' ? 'environment' : 'user';
+  if (!(await openCamera())) return;
+  applyScale(); fitView();
+  oriFirst = true;            // сразу повернуть 3D-камеру в новую сторону
+  if (!gotOri) camera.quaternion.identity();
+  needPlace = true;           // и поставить фигуру в кадр новой камеры
+  tip(facing === 'user' ? 'Фронтальная камера: фигура у вас за спиной. Пальцем можно передвинуть' : 'Задняя камера', 4000);
 }
 function stopGyro() {
   cancelAnimationFrame(raf); raf = 0;
   window.removeEventListener('deviceorientation', onOri);
   video.removeEventListener('loadedmetadata', fitView);
   if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
-  video.srcObject = null;
+  video.srcObject = null; root.classList.remove('mirror'); facing = 'environment';
   disposeScene();
 }
 window.addEventListener('resize', () => { if (mode === 'gyro') fitView(); });
@@ -631,7 +664,8 @@ let ray = null;
 function floorAt(x, y) {
   const r = root.getBoundingClientRect();
   if (!ray) ray = new THREE.Raycaster();
-  ray.setFromCamera(new THREE.Vector2((x - r.left) / r.width * 2 - 1, -((y - r.top) / r.height) * 2 + 1), camera);
+  let nx = (x - r.left) / r.width * 2 - 1; if (facing === 'user') nx = -nx;   // картинка зеркальная
+  ray.setFromCamera(new THREE.Vector2(nx, -((y - r.top) / r.height) * 2 + 1), camera);
   const out = new THREE.Vector3();
   return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), out) ? out : null;
 }
@@ -650,9 +684,8 @@ root.addEventListener('pointermove', (e) => {
   pts[e.pointerId] = { x: e.clientX, y: e.clientY };
   const after = pair();
   if (before && after) {
-    const s = holder.scale.x * after.d / Math.max(before.d, 1);
-    holder.scale.setScalar(Math.min(Math.max(s, 0.5), 1.8));
-    userYaw -= after.ang - before.ang; faceFrom(0, 0);
+    figScale = Math.min(Math.max(figScale * after.d / Math.max(before.d, 1), 0.5), 1.8); applyScale();
+    userYaw += (facing === 'user' ? 1 : -1) * (after.ang - before.ang); faceFrom(0, 0);
   } else if (Object.keys(pts).length === 1) {
     const a = floorAt(prev.x, prev.y), b = floorAt(e.clientX, e.clientY);
     if (a && b) {
@@ -678,6 +711,7 @@ function shoot() {
   const s = Math.max(W / vw, H / vh), sw = W / s, sh = H / s, sx = (vw - sw) / 2, sy = (vh - sh) / 2;
   const c = document.createElement('canvas'); c.width = Math.round(sw); c.height = Math.round(sh);
   const g = c.getContext('2d');
+  if (facing === 'user') { g.translate(c.width, 0); g.scale(-1, 1); }   // как на экране
   g.drawImage(video, sx, sy, sw, sh, 0, 0, c.width, c.height);
   renderer.render(scene, camera);
   g.drawImage(renderer.domElement, 0, 0, c.width, c.height);
@@ -697,6 +731,7 @@ $('xrShot').addEventListener('click', () => {
   let n = 3; const el = $('xrCount'); el.hidden = false; el.textContent = n;
   const t = setInterval(() => { n--; if (n <= 0) { clearInterval(t); el.hidden = true; go(); } else el.textContent = n; }, 1000);
 });
+$('xrSwitch').addEventListener('click', () => { switchCamera(); });
 $('xrTimer').addEventListener('click', function () { timerOn = !timerOn; this.setAttribute('aria-pressed', timerOn ? 'true' : 'false'); });
 $('xrTurn').addEventListener('click', () => { if (!holder) return; userYaw += Math.PI; holder.rotation.y += Math.PI; });
 $('xrRetake').addEventListener('click', () => { $('xrResult').hidden = true; });
