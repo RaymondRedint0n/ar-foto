@@ -56,6 +56,7 @@ model-viewer::part(default-ar-button){display:none}
 .xr-escape:focus-visible{outline:2px solid #fff;outline-offset:3px}
 .photo-btn{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;border:1px solid var(--accent);background:transparent;color:var(--fg);
   font-family:var(--display);font-size:17px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:12px 16px;border-radius:4px;cursor:pointer}
+.photo-btn.ios-cam{border-color:var(--line)}
 .photo-btn small{font-family:var(--body);font-size:12px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted)}
 .photo-btn:focus-visible{outline:2px solid var(--fg);outline-offset:3px}
 /* режим «Фото с фигурой»: камера на весь экран, фигура поверх */
@@ -95,7 +96,7 @@ model-viewer::part(default-ar-button){display:none}
 
   <div class="stage">
     <model-viewer id="mv" alt="Фигура в полный рост с табличкой, на которой сегодняшняя дата"
-      ar ar-modes="quick-look" ar-scale="fixed" ar-placement="floor"
+      ar ar-modes="quick-look" ar-scale="auto" ar-placement="floor"
       camera-controls touch-action="pan-y" camera-target="auto auto auto" camera-orbit="-15deg 82deg auto"
       min-camera-orbit="auto 40deg 1.5m" max-camera-orbit="auto 95deg 6m"
       shadow-intensity="1" shadow-softness="0.8" exposure="1.05" environment-image="neutral"
@@ -105,6 +106,7 @@ model-viewer::part(default-ar-button){display:none}
     <span class="hint">Покрутите пальцем</span>
   </div>
 
+  <button class="photo-btn ios-cam" id="iosCam" type="button" hidden>Селфи и таймер<small>Режим камеры с кнопками: фронтальная камера, таймер, «Сюда», «180°»</small></button>
   <button class="photo-btn" id="photoBtn" type="button">Фото с фигурой<small>Камера телефона + фигура рядом. Работает на любом телефоне, без AR</small></button>
 
   <p class="status" id="status">Проверяю, поддерживает ли устройство AR…</p>
@@ -127,7 +129,7 @@ model-viewer::part(default-ar-button){display:none}
 
   <div class="steps">
     <div class="step"><h2>Android</h2><p>«Поставить в комнату» → разрешите камеру. Если телефон поддерживает AR, фигура встанет на пол, фото — скриншот. Если нет, включится камера с гироскопом: поворачивайте телефон, фигура останется на месте, снимок — оранжевой кнопкой.</p></div>
-    <div class="step"><h2>iPhone</h2><p>Только в Safari: «Поставить в комнату», затем вкладка «ДР» вверху. Внизу есть кнопка съёмки фото и видео. В других браузерах вкладка «ДР» серая.</p></div>
+    <div class="step"><h2>iPhone</h2><p>В Safari «Поставить в комнату» открывает AR от Apple: вкладка «ДР», белый круг — фото, удержание — видео. Фигура в натуральный рост: отойдите на 2–3 м или уменьшите её двумя пальцами. Селфи и таймер — кнопка «Селфи и таймер».</p></div>
     <div class="step"><h2>Без AR</h2><p>«Фото с фигурой» включает обычную камеру. Двигайте фигуру пальцем, двумя пальцами меняйте размер. Встаньте рядом и нажмите оранжевую кнопку или включите таймер на 3 секунды.</p></div>
   </div>
 </div>
@@ -237,6 +239,10 @@ model-viewer::part(default-ar-button){display:none}
   } else {
     document.getElementById('fbScene').hidden=true; document.getElementById('fbGoogle').hidden=true;
   }
+  if(isIOS && !iosOther){
+    var ic=document.getElementById('iosCam'); ic.hidden=false;
+    ic.addEventListener('click',function(){ if(window.arStart) window.arStart(); else set('Камера ещё загружается, нажмите ещё раз через пару секунд.'); });
+  }
   if(iosOther){
     document.getElementById('iosHint').hidden=false;
     document.getElementById('copyLink').addEventListener('click',function(){
@@ -250,7 +256,7 @@ model-viewer::part(default-ar-button){display:none}
   if(location.hash==='#noar'){ set('Приложение Google для AR не открылось. Нажмите «Поставить в комнату» или «Фото с фигурой».'); showFallback(); }
   mv.addEventListener('load',function(){
     if(location.hash==='#noar') return;
-    if(isIOS && !iosOther){ set(mv.canActivateAR ? '<b>Готово.</b> Нажмите «Поставить в комнату», затем вкладку «ДР» вверху.' : 'Нажмите «Поставить в комнату», откроется камера.'); }
+    if(isIOS && !iosOther){ set(mv.canActivateAR ? '<b>Готово.</b> «Поставить в комнату» — AR от Apple: вкладка «ДР», белый круг — фото, удержание — видео, двумя пальцами — размер. Селфи и таймер — кнопка ниже.' : 'Нажмите «Поставить в комнату», откроется камера.'); }
     else if(iosOther){ set('В этом браузере фигура откроется в режиме камеры. Для полноценного AR откройте страницу в Safari.'); }
     else if(isMobile){ set('<b>Готово.</b> Нажмите «Поставить в комнату» и разрешите доступ к камере.'); }
     else { set('Откройте эту страницу на телефоне, чтобы поставить фигуру в комнату.'); }
