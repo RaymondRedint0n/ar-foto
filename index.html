@@ -504,7 +504,7 @@ async function setupLive() {
   const meta = await liveMeta;
   if (!meta || !figure) return;
   const v = document.createElement('video');
-  v.src = 'live.mp4'; v.muted = true; v.loop = true; v.playsInline = true;
+  v.src = 'live.mp4' + (meta.v ? '?v=' + meta.v : ''); v.muted = true; v.loop = true; v.playsInline = true;
   v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.preload = 'auto';
   const tex = new THREE.VideoTexture(v); tex.colorSpace = THREE.NoColorSpace;
   tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;

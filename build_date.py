@@ -19,9 +19,10 @@ OUT = os.path.join(ROOT, '_site')
 # Девушки календаря. Новая девушка = папка в assets (front.png, back.png, sign.json) + строка здесь.
 #   assets — папка с картинками, out — папка на сайте ('' = главная страница),
 #   height — высота силуэта от верхней точки (макушка или поднятая рука) до подошвы, м
+#   live — True, если в папке есть «живое» видео (live.mp4 + live.json)
 FIGURES = [
     {'assets': 'assets',          'out': '',         'height': 1.70},
-    {'assets': 'assets/balerina', 'out': 'balerina', 'height': 1.98},   # рука поднята над головой, на пуантах
+    {'assets': 'assets/balerina', 'out': 'balerina', 'height': 1.98, 'live': True},   # рука поднята, на пуантах; живое видео
 ]
 
 MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля',
@@ -156,13 +157,17 @@ def build_figure(d, cfg):
             im = im.resize((round(im.width * 1600 / im.height), 1600), Image.LANCZOS)
         im.save(os.path.join(out, name), optimize=True)
     page = open(os.path.join(ROOT, 'index.html'), encoding='utf-8').read()
-    if os.path.exists(os.path.join(folder, 'live.mp4')):   # «живое фото», если есть
-        for extra in ('live.mp4', 'live.json'):
-            shutil.copy(os.path.join(folder, extra), os.path.join(out, extra))
+    if cfg.get('live') and os.path.exists(os.path.join(folder, 'live.mp4')):   # «живое фото»
+        import hashlib
+        tag = lambda f: hashlib.md5(open(f, 'rb').read()).hexdigest()[:10]   # меняется при каждом изменении файла
+        shutil.copy(os.path.join(folder, 'live.mp4'), os.path.join(out, 'live.mp4'))
+        lm = json.load(open(os.path.join(folder, 'live.json')))
+        lm['v'] = tag(os.path.join(folder, 'live.mp4'))      # телефон не возьмёт старое видео из кэша
+        json.dump(lm, open(os.path.join(out, 'live.json'), 'w'), separators=(',', ':'))
         try:
             build_live_usdz(d, folder, out, back, S)
-            # AR от Apple на iPhone открывает живую модель вместо статичной
-            page = page.replace('ar ar-modes="quick-look"', f'ios-src="live.usdz?d={d:%Y%m%d}" ar ar-modes="quick-look"', 1)
+            # AR от Apple на iPhone открывает живую модель вместо статичной; адрес новый при каждом изменении модели
+            page = page.replace('ar ar-modes="quick-look"', f'ios-src="live.usdz?v={tag(os.path.join(out, "live.usdz"))}" ar ar-modes="quick-look"', 1)
         except Exception as e:   # без модели для iPhone страница всё равно работает (статичная фигура)
             print('   live.usdz пропущен:', e)
     with open(os.path.join(out, 'index.html'), 'w', encoding='utf-8') as fh:
