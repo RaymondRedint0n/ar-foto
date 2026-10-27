@@ -209,7 +209,10 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=0.55):
     usda = os.path.join(tmp, 'live.usdc')
     st = Usd.Stage.CreateNew(usda)
     UsdGeom.SetStageUpAxis(st, UsdGeom.Tokens.y); UsdGeom.SetStageMetersPerUnit(st, 1.0)
-    st.SetStartTimeCode(0); st.SetEndTimeCode(n); st.SetTimeCodesPerSecond(fps); st.SetFramesPerSecond(fps)
+    # Apple сглаживает анимацию между ключами — поэтому шкала времени мелкая (240 делений в секунду),
+    # а кадр включается и выключается за одно деление (~4 мс): плавных «переходов» между кадрами нет.
+    TPS = 240; span = TPS // fps; end = n * span
+    st.SetStartTimeCode(0); st.SetEndTimeCode(end); st.SetTimeCodesPerSecond(TPS); st.SetFramesPerSecond(TPS)
     root = UsdGeom.Xform.Define(st, '/Root'); st.SetDefaultPrim(root.GetPrim())
     UsdGeom.Scope.Define(st, '/Root/Materials')
 
@@ -219,7 +222,7 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=0.55):
         sh.CreateInput('roughness', Sdf.ValueTypeNames.Float).Set(1.0)
         sh.CreateInput('metallic', Sdf.ValueTypeNames.Float).Set(0.0)
         rd = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/st'); rd.CreateIdAttr('UsdPrimvarReader_float2')
-        rd.CreateInput('varname', Sdf.ValueTypeNames.Token).Set('st')
+        rd.CreateInput('varname', Sdf.ValueTypeNames.String).Set('st')
         def texture(tname, f):
             t = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/{tname}'); t.CreateIdAttr('UsdUVTexture')
             t.CreateInput('file', Sdf.ValueTypeNames.Asset).Set(f'tex/{f}')
@@ -252,19 +255,20 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=0.55):
     cx, cy, z = (xl + xr) / 2, (yt + yb) / 2, 0.0045
     pts = [(xl - cx, yb - cy, 0), (xr - cx, yb - cy, 0), (xr - cx, yt - cy, 0), (xl - cx, yt - cy, 0)]
     UsdGeom.Xform.Define(st, '/Root/Live')
-    tiny, eps = Gf.Vec3f(0.0001, 0.0001, 0.0001), 0.001
+    tiny = Gf.Vec3f(0.0001, 0.0001, 0.0001)
     for i in range(n):
         x = UsdGeom.Xform.Define(st, f'/Root/Live/F{i:03d}')
         x.AddTranslateOp().Set(Gf.Vec3d(cx, cy, z))
         sop = x.AddScaleOp()
         one = Gf.Vec3f(1, 1, 1)
+        a, b = i * span, (i + 1) * span            # кадр виден на [a, b)
         if i > 0:
-            sop.Set(tiny, 0); sop.Set(tiny, i - eps)
-        sop.Set(one, i); sop.Set(one, i + 1 - eps)
+            sop.Set(tiny, 0); sop.Set(tiny, a - 1)
+        sop.Set(one, a); sop.Set(one, b - 1)
         if i < n - 1:
-            sop.Set(tiny, i + 1); sop.Set(tiny, n)
+            sop.Set(tiny, b); sop.Set(tiny, end)
         else:
-            sop.Set(one, n)
+            sop.Set(one, end)
         plane(f'/Root/Live/F{i:03d}/Quad', pts, material(f'M{i:03d}', f'c{i:03d}.jpg', f'a{i:03d}.png'))
     # зад: фото со спины, как в статичной модели
     x0 = -bfx * S_static; x1 = (bw - bfx) * S_static
