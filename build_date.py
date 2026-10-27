@@ -155,11 +155,133 @@ def build_figure(d, cfg):
         if im.height > 1600:
             im = im.resize((round(im.width * 1600 / im.height), 1600), Image.LANCZOS)
         im.save(os.path.join(out, name), optimize=True)
-    shutil.copy(os.path.join(ROOT, 'index.html'), os.path.join(out, 'index.html'))
-    for extra in ('live.mp4', 'live.json'):   # «живое фото», если есть
-        if os.path.exists(os.path.join(folder, extra)):
+    page = open(os.path.join(ROOT, 'index.html'), encoding='utf-8').read()
+    if os.path.exists(os.path.join(folder, 'live.mp4')):   # «живое фото», если есть
+        for extra in ('live.mp4', 'live.json'):
             shutil.copy(os.path.join(folder, extra), os.path.join(out, extra))
+        try:
+            build_live_usdz(d, folder, out, back, S)
+            # AR от Apple на iPhone открывает живую модель вместо статичной
+            page = page.replace('ar ar-modes="quick-look"', f'ios-src="live.usdz?d={d:%Y%m%d}" ar ar-modes="quick-look"', 1)
+        except Exception as e:   # без модели для iPhone страница всё равно работает (статичная фигура)
+            print('   live.usdz пропущен:', e)
+    with open(os.path.join(out, 'index.html'), 'w', encoding='utf-8') as fh:
+        fh.write(page)
     print('  ', cfg['out'] or '(главная)', '->', out)
+
+
+def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=0.55):
+    """Живая фигура для AR от Apple (iPhone): кадры видео — плоскости, которые показываются по очереди.
+    Apple не проигрывает видео внутри модели, но проигрывает анимацию — получается «мультфильм» по кругу."""
+    import subprocess, tempfile
+    from pxr import Usd, UsdGeom, UsdShade, UsdUtils, Sdf, Gf, Vt
+    meta = json.load(open(os.path.join(folder, 'live.json')))
+    step = max(1, round(meta['fps'] / fps))
+    W, H = meta['w'], meta['h']
+    tw, th = int(W * scale) // 2 * 2, int(H * scale) // 2 * 2
+    tmp = tempfile.mkdtemp(prefix='usdz_')
+    subprocess.run(['ffmpeg', '-v', 'error', '-i', os.path.join(folder, 'live.mp4'),
+                    '-vf', f"select='not(mod(n\\,{step}))',scale={tw * 2}:{th}:flags=lanczos", '-vsync', '0',
+                    os.path.join(tmp, 'v%03d.png')], check=True)
+    vframes = sorted(f for f in os.listdir(tmp) if f.startswith('v'))
+    n = len(vframes)
+    card = sign_card(d)
+    src = [(0, 0), (card.width, 0), (card.width, card.height), (0, card.height)]
+    tex = os.path.join(tmp, 'tex'); os.makedirs(tex)
+    k = tw / W
+    for i, name in enumerate(vframes):
+        im = np.array(Image.open(os.path.join(tmp, name)).convert('RGB'))
+        col = Image.fromarray(im[:, :tw]); al = Image.fromarray(im[:, tw:tw * 2, 0])
+        q = [(x * k, y * k) for x, y in meta['sign'][min(i * step, meta['frames'] - 1)]]
+        warped = card.transform(col.size, Image.PERSPECTIVE, perspective_coeffs(q, src), Image.BICUBIC, fillcolor='white')
+        mask = Image.new('L', col.size, 0); ImageDraw.Draw(mask).polygon(q, fill=255)
+        c = np.array(col).astype(float); ink = np.array(warped).astype(float) / 255
+        c = np.where((np.array(mask) > 0)[..., None], c * ink, c)
+        Image.fromarray(c.clip(0, 255).astype('uint8')).save(os.path.join(tex, f'c{i:03d}.jpg'), quality=86)
+        al.save(os.path.join(tex, f'a{i:03d}.png'), optimize=True)
+    # задняя сторона — фото со спины (уменьшенное)
+    bt, bb, bfx = silhouette_info(back)
+    bw, bh = back.size
+    bsm = back.resize((bw // 2, bh // 2), Image.LANCZOS)
+    bsm.convert('RGB').save(os.path.join(tex, 'back.jpg'), quality=86)
+    bsm.split()[3].save(os.path.join(tex, 'back_a.png'), optimize=True)
+
+    usda = os.path.join(tmp, 'live.usdc')
+    st = Usd.Stage.CreateNew(usda)
+    UsdGeom.SetStageUpAxis(st, UsdGeom.Tokens.y); UsdGeom.SetStageMetersPerUnit(st, 1.0)
+    st.SetStartTimeCode(0); st.SetEndTimeCode(n); st.SetTimeCodesPerSecond(fps); st.SetFramesPerSecond(fps)
+    root = UsdGeom.Xform.Define(st, '/Root'); st.SetDefaultPrim(root.GetPrim())
+    UsdGeom.Scope.Define(st, '/Root/Materials')
+
+    def material(name, color_file, alpha_file):
+        m = UsdShade.Material.Define(st, f'/Root/Materials/{name}')
+        sh = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/PBR'); sh.CreateIdAttr('UsdPreviewSurface')
+        sh.CreateInput('roughness', Sdf.ValueTypeNames.Float).Set(1.0)
+        sh.CreateInput('metallic', Sdf.ValueTypeNames.Float).Set(0.0)
+        rd = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/st'); rd.CreateIdAttr('UsdPrimvarReader_float2')
+        rd.CreateInput('varname', Sdf.ValueTypeNames.Token).Set('st')
+        def texture(tname, f):
+            t = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/{tname}'); t.CreateIdAttr('UsdUVTexture')
+            t.CreateInput('file', Sdf.ValueTypeNames.Asset).Set(f'tex/{f}')
+            t.CreateInput('st', Sdf.ValueTypeNames.Float2).ConnectToSource(rd.ConnectableAPI(), 'result')
+            t.CreateInput('wrapS', Sdf.ValueTypeNames.Token).Set('clamp'); t.CreateInput('wrapT', Sdf.ValueTypeNames.Token).Set('clamp')
+            return t
+        tc = texture('col', color_file)
+        tc.CreateInput('sourceColorSpace', Sdf.ValueTypeNames.Token).Set('sRGB')
+        sh.CreateInput('diffuseColor', Sdf.ValueTypeNames.Color3f).ConnectToSource(tc.ConnectableAPI(), 'rgb')
+        ta = texture('alpha', alpha_file)
+        ta.CreateInput('sourceColorSpace', Sdf.ValueTypeNames.Token).Set('raw')
+        sh.CreateInput('opacity', Sdf.ValueTypeNames.Float).ConnectToSource(ta.ConnectableAPI(), 'r')
+        m.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), 'surface')
+        return m
+
+    def plane(path, pts, mat):
+        mesh = UsdGeom.Mesh.Define(st, path)
+        mesh.CreatePointsAttr(Vt.Vec3fArray([Gf.Vec3f(*p) for p in pts]))
+        mesh.CreateFaceVertexCountsAttr([4]); mesh.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
+        mesh.CreateDoubleSidedAttr(False)
+        mesh.CreateExtentAttr(UsdGeom.Mesh.ComputeExtent(mesh.GetPointsAttr().Get()))
+        pv = UsdGeom.PrimvarsAPI(mesh).CreatePrimvar('st', Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex)
+        pv.Set(Vt.Vec2fArray([Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]))
+        UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(mat)
+
+    # перед: кадры видео (масштаб — как в проигрывателе на странице)
+    S = meta['heightM'] / (meta['bottom'] - meta['top'])
+    xl, xr = (0 - meta['feetX']) * S, (W - meta['feetX']) * S
+    yt, yb = meta['bottom'] * S, (meta['bottom'] - H) * S
+    cx, cy, z = (xl + xr) / 2, (yt + yb) / 2, 0.0045
+    pts = [(xl - cx, yb - cy, 0), (xr - cx, yb - cy, 0), (xr - cx, yt - cy, 0), (xl - cx, yt - cy, 0)]
+    UsdGeom.Xform.Define(st, '/Root/Live')
+    tiny, eps = Gf.Vec3f(0.0001, 0.0001, 0.0001), 0.001
+    for i in range(n):
+        x = UsdGeom.Xform.Define(st, f'/Root/Live/F{i:03d}')
+        x.AddTranslateOp().Set(Gf.Vec3d(cx, cy, z))
+        sop = x.AddScaleOp()
+        one = Gf.Vec3f(1, 1, 1)
+        if i > 0:
+            sop.Set(tiny, 0); sop.Set(tiny, i - eps)
+        sop.Set(one, i); sop.Set(one, i + 1 - eps)
+        if i < n - 1:
+            sop.Set(tiny, i + 1); sop.Set(tiny, n)
+        else:
+            sop.Set(one, n)
+        plane(f'/Root/Live/F{i:03d}/Quad', pts, material(f'M{i:03d}', f'c{i:03d}.jpg', f'a{i:03d}.png'))
+    # зад: фото со спины, как в статичной модели
+    x0 = -bfx * S_static; x1 = (bw - bfx) * S_static
+    y0 = -(bh - 1 - bb) * S_static; y1 = y0 + bh * S_static
+    plane('/Root/Back', [(-x0, y0, -GAP), (-x1, y0, -GAP), (-x1, y1, -GAP), (-x0, y1, -GAP)],
+          material('MBack', 'back.jpg', 'back_a.png'))
+    st.GetRootLayer().Save()
+    cwd = os.getcwd(); os.chdir(tmp)
+    try:
+        ok = UsdUtils.CreateNewARKitUsdzPackage(Sdf.AssetPath('live.usdc'), 'live.usdz')
+    finally:
+        os.chdir(cwd)
+    if not ok:
+        raise RuntimeError('USDZ не собрался')
+    shutil.copy(os.path.join(tmp, 'live.usdz'), os.path.join(out, 'live.usdz'))
+    shutil.rmtree(tmp, ignore_errors=True)
+    print('   live.usdz:', n, 'кадров,', os.path.getsize(os.path.join(out, 'live.usdz')) // 1024, 'КБ')
 
 
 def main():
