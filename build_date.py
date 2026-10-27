@@ -156,6 +156,9 @@ def build_figure(d, cfg):
             im = im.resize((round(im.width * 1600 / im.height), 1600), Image.LANCZOS)
         im.save(os.path.join(out, name), optimize=True)
     shutil.copy(os.path.join(ROOT, 'index.html'), os.path.join(out, 'index.html'))
+    for extra in ('live.mp4', 'live.json'):   # «живое фото», если есть
+        if os.path.exists(os.path.join(folder, extra)):
+            shutil.copy(os.path.join(folder, extra), os.path.join(out, extra))
     print('  ', cfg['out'] or '(главная)', '->', out)
 
 

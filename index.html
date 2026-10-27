@@ -45,6 +45,8 @@ model-viewer{width:100%;height:min(68vh,620px);min-height:380px;display:block;--
 .btn.ghost{border-color:var(--line);color:var(--muted)}
 @media (prefers-reduced-motion:reduce){model-viewer{--auto-rotate:none}}
 model-viewer::part(default-ar-button){display:none}
+.live-preview{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:pan-y;cursor:grab}
+.mv-hidden{opacity:0;pointer-events:none}
 /* «Поставить в комнату»: свой AR (WebXR) или камера + гироскоп */
 .xr .xr-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 .xr.webxr{background:transparent}
@@ -454,11 +456,100 @@ function loadAll() {
         o.material = new THREE.MeshBasicMaterial({ map: m.map, alphaTest: 0.5, side: THREE.FrontSide });
       }
     });
+    await setupLive();
   })();
   loading.catch(() => { loading = null; });
   return loading;
 }
 if (info.isMobile) setTimeout(() => { loadAll().catch(() => {}); }, 1500);
+
+/* ---------- «живое фото»: видео спереди (слева цвет, справа прозрачность) + дата на табличке ---------- */
+let live = null;
+const liveMeta = fetch('live.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+function dateParts() {
+  const p = {};
+  new Intl.DateTimeFormat('ru-RU', { timeZone: 'Asia/Yekaterinburg', day: 'numeric', month: 'long', weekday: 'long', year: 'numeric' })
+    .formatToParts(new Date()).forEach((x) => { p[x.type] = x.value; });
+  return p;
+}
+async function dateCanvas() {   // табличка как в статичной фигуре: СЕГОДНЯ / число / месяц / день недели / год
+  try { await Promise.all([document.fonts.load('600 200px Oswald'), document.fonts.load('400 60px Manrope')]); } catch (e) {}
+  const W = 600, H = 830, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'), d = dateParts(), pad = 46, mw = W - 2 * pad;
+  const BOLD = '"Oswald","Arial Narrow",Arial,sans-serif', REG = '"Manrope",Arial,sans-serif';
+  const fit = (text, weight, fam, size) => { do { g.font = `${weight} ${size}px ${fam}`; size -= 2; } while (g.measureText(text).width > mw && size > 10); return size + 2; };
+  g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+  // СЕГОДНЯ разрядкой
+  g.font = `600 40px ${BOLD}`; g.fillStyle = '#78787c';
+  const top = 'СЕГОДНЯ', sp = 10; let tw = 0; for (const ch of top) tw += g.measureText(ch).width; tw += sp * (top.length - 1);
+  let x = (W - tw) / 2; for (const ch of top) { g.fillText(ch, x, 92); x += g.measureText(ch).width + sp; }
+  g.fillStyle = '#f26b14'; g.fillRect(W / 2 - 60, 112, 120, 8);
+  // число
+  const day = d.day || '';
+  const ds = fit(day, 600, BOLD, 380); g.font = `600 ${ds}px ${BOLD}`;
+  const mDay = g.measureText(day), asc = mDay.actualBoundingBoxAscent || ds * 0.72, dsc = mDay.actualBoundingBoxDescent || 0;
+  g.fillStyle = '#18181a'; g.fillText(day, (W - mDay.width) / 2, 150 + asc);
+  let y = 150 + asc + dsc + 34;
+  // месяц
+  const month = (d.month || '').toUpperCase(), ms = fit(month, 600, BOLD, 96);
+  g.font = `600 ${ms}px ${BOLD}`; g.fillStyle = '#f26b14';
+  g.fillText(month, (W - g.measureText(month).width) / 2, y + ms * 0.8); y += ms + 26;
+  g.fillStyle = '#cdcdd0'; g.fillRect(pad + 40, y, W - 2 * pad - 80, 4); y += 30;
+  const wd = d.weekday || '', ws = fit(wd, 400, REG, 64);
+  g.font = `400 ${ws}px ${REG}`; g.fillStyle = '#18181a'; g.fillText(wd, (W - g.measureText(wd).width) / 2, y + ws * 0.8); y += ws + 20;
+  g.font = `400 40px ${REG}`; g.fillStyle = '#78787c'; g.fillText(d.year || '', (W - g.measureText(d.year || '').width) / 2, y + 32);
+  return c;
+}
+async function setupLive() {
+  const meta = await liveMeta;
+  if (!meta || !figure) return;
+  const v = document.createElement('video');
+  v.src = 'live.mp4'; v.muted = true; v.loop = true; v.playsInline = true;
+  v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.preload = 'auto';
+  const tex = new THREE.VideoTexture(v); tex.colorSpace = THREE.NoColorSpace;
+  tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { map: { value: tex } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform sampler2D map; varying vec2 vUv;
+      void main(){
+        vec3 c = texture2D(map, vec2(vUv.x * 0.5, vUv.y)).rgb;
+        float a = texture2D(map, vec2(0.5 + vUv.x * 0.5, vUv.y)).r;
+        if (a < 0.04) discard;
+        c = pow(c, vec3(2.2));            /* цвет видео в линейный, как у остальных материалов */
+        gl_FragColor = vec4(c, a);
+        #include <colorspace_fragment>
+      }`,
+    transparent: true, depthWrite: false,
+  });
+  const S = meta.heightM / (meta.bottom - meta.top);   // метров на пиксель
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(meta.w * S, meta.h * S), mat);
+  plane.position.set((meta.w / 2 - meta.feetX) * S, (meta.bottom - meta.h / 2) * S, 0.0045);
+  plane.renderOrder = 1;
+  // табличка с датой: четыре угла двигаются вместе с табличкой на видео
+  const dTex = new THREE.CanvasTexture(await dateCanvas()); dTex.colorSpace = THREE.SRGBColorSpace;
+  const dGeo = new THREE.BufferGeometry();
+  dGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
+  dGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 1, 1, 1, 1, 0, 0, 0]), 2));
+  dGeo.setIndex([0, 3, 1, 1, 3, 2]);
+  const dMesh = new THREE.Mesh(dGeo, new THREE.MeshBasicMaterial({ map: dTex, color: 0xeeeeee }));
+  dMesh.renderOrder = 2; dMesh.frustumCulled = false;
+  const front = figure.getObjectByName('front'); if (front) front.visible = false;
+  figure.add(plane); figure.add(dMesh);
+  live = { meta, video: v, S, dGeo, last: -1 };
+  updateLive(true);
+}
+function updateLive(force) {   // поставить дату на табличку текущего кадра
+  if (!live) return;
+  const m = live.meta, n = m.frames;
+  const f = Math.min(n - 1, Math.floor((live.video.currentTime || 0) * m.fps) % n);
+  if (f === live.last && !force) return;
+  live.last = f;
+  const q = m.sign[f], S = live.S, pos = live.dGeo.attributes.position;
+  for (let i = 0; i < 4; i++) pos.setXYZ(i, (q[i][0] - m.feetX) * S, (m.bottom - q[i][1]) * S, 0.0065);
+  pos.needsUpdate = true; live.dGeo.computeBoundingSphere();
+}
+function playLive() { if (live) live.video.play().catch(() => {}); }
 
 /* ---------- сцена ---------- */
 function freshCanvas() {   // новый canvas на каждый запуск: у WebXR и у режима камеры разные настройки WebGL
@@ -541,7 +632,7 @@ async function startXR() {
     const ref = renderer.xr.getReferenceSpace(), pose = frame.getViewerPose(ref), now = performance.now();
     if (!pose) {
       if (!firstPose && now - t0 > 7000) endSession('no-tracking');
-      renderer.render(scene, camera); return;
+      updateLive(); renderer.render(scene, camera); return;
     }
     lastPose = pose;
     if (camAccess === null) {
@@ -562,7 +653,7 @@ async function startXR() {
       if (floorLike) { place(lastHit); tip(camAccess ? 'Готово! Нажмите на пол, чтобы переставить. Фото — оранжевая кнопка' : 'Готово! Нажмите на пол, чтобы переставить. Фото — скриншот телефона', 6000); escBtn.hidden = true; }
       else if (now - firstPose > 6000) { placeAhead(pose); tip('Пол не найден — фигура поставлена перед вами. «Сюда» — переставить', 6000); escBtn.hidden = true; }
     }
-    renderer.render(scene, camera);
+    updateLive(); renderer.render(scene, camera);
     if (xrShotPending) { xrShotPending = false; try { captureXR(pose); } catch (e) { tip('Снимок не получился — сделайте скриншот телефона', 5000); } }
   });
 }
@@ -718,7 +809,7 @@ async function startGyro(msg, startFacing) {
       else camera.quaternion.slerp(want, 0.35);
     }
     if (needPlace && (gotOri || performance.now() - tStart > 700)) { placeInFront(); needPlace = false; }
-    renderer.render(scene, camera);
+    updateLive(); renderer.render(scene, camera);
   };
   loop();
 }
@@ -797,7 +888,7 @@ function shoot() {
   const g = c.getContext('2d');
   if (facing === 'user') { g.translate(c.width, 0); g.scale(-1, 1); }   // как на экране
   g.drawImage(video, sx, sy, sw, sh, 0, 0, c.width, c.height);
-  renderer.render(scene, camera);
+  updateLive(); renderer.render(scene, camera);
   g.drawImage(renderer.domElement, 0, 0, c.width, c.height);
   const fl = $('xrFlash'); fl.classList.add('on'); setTimeout(() => fl.classList.remove('on'), 60);
   c.toBlob(showPhoto, 'image/jpeg', 0.92);
@@ -847,6 +938,7 @@ $('xrShare').addEventListener('click', () => {
 
 /* ---------- открыть / закрыть ---------- */
 function hideRoot() {
+  if (live && !preview) live.video.pause();
   root.hidden = true; mode = null; tip('');
   $('xrResult').hidden = true; $('xrMsg').hidden = true; $('xrCount').hidden = true;
   if (photoUrl) { URL.revokeObjectURL(photoUrl); photoUrl = null; }
@@ -862,6 +954,7 @@ window.addEventListener('popstate', () => { if (!root.hidden || session) closeAl
 
 window.arStart = async function () {
   if (mode) return;
+  playLive();
   /* iPhone вне Safari: разрешение на гироскоп спрашивается только прямо в момент нажатия */
   let oriPerm = null;
   if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -871,7 +964,7 @@ window.arStart = async function () {
   const xrCheck = (navigator.xr && !info.isIOS) ? navigator.xr.isSessionSupported('immersive-ar').catch(() => false) : Promise.resolve(false);
   root.hidden = false; mode = 'loading'; tip('Загружаю фигуру…');
   try { history.pushState({ xr: 1 }, ''); } catch (e) {}
-  try { await loadAll(); }
+  try { await loadAll(); playLive(); }
   catch (e) {
     hideRoot(); try { if (history.state && history.state.xr) history.back(); } catch (_) {}
     if (info.setStatus) info.setStatus('Не удалось загрузить 3D-фигуру. Проверьте интернет или нажмите «Фото с фигурой».');
@@ -885,5 +978,41 @@ window.arStart = async function () {
   if (oriPerm) await oriPerm;
   startGyro(xrOK ? 'AR на этом телефоне не запустился — включил режим камеры' : null);
 };
+
+/* ---------- превью на странице: живая фигура, пальцем можно повернуть ---------- */
+let preview = null;
+liveMeta.then(async (meta) => {
+  if (!meta) return;
+  const stage = document.querySelector('.stage'), mv = document.getElementById('mv');
+  if (!stage || !mv) return;
+  try { await loadAll(); } catch (e) { return; }
+  if (!live) return;
+  const cv = document.createElement('canvas'); cv.className = 'live-preview';
+  stage.insertBefore(cv, stage.firstChild.nextSibling);
+  mv.classList.add('mv-hidden');
+  const r = new THREE.WebGLRenderer({ canvas: cv, alpha: true, antialias: true });
+  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); r.setClearColor(0x000000, 0);
+  const sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera(26, 1, 0.1, 50);
+  const g = new THREE.Group(); g.add(figure.clone(true)); sc.add(g);
+  const box = new THREE.Box3().setFromObject(g), hgt = box.max.y - box.min.y;
+  cam.position.set(0, box.min.y + hgt * 0.52, hgt / (2 * Math.tan(THREE.MathUtils.degToRad(13))) * 1.12);
+  cam.lookAt(0, box.min.y + hgt * 0.5, 0);
+  let yaw = -0.25, drag = null, visible = true;
+  const size = () => { const w = cv.clientWidth, h = cv.clientHeight; if (w && h) { r.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); } };
+  new ResizeObserver(size).observe(cv); size();
+  new IntersectionObserver((e) => { visible = e[0].isIntersecting; }).observe(cv);
+  cv.addEventListener('pointerdown', (e) => { drag = e.clientX; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', (e) => { if (drag == null) return; yaw += (e.clientX - drag) * 0.01; drag = e.clientX; });
+  cv.addEventListener('pointerup', () => { drag = null; }); cv.addEventListener('pointercancel', () => { drag = null; });
+  preview = { r };
+  live.video.play().catch(() => {});
+  const tick = () => {
+    requestAnimationFrame(tick);
+    if (!visible || mode) return;          // пока открыт AR — превью не рисуем
+    if (live.video.paused) live.video.play().catch(() => {});
+    g.rotation.y = yaw; updateLive(); r.render(sc, cam);
+  };
+  tick();
+});
 </script>
 </body></html>
