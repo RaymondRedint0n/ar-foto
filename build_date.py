@@ -170,12 +170,14 @@ def build_figure(d, cfg):
     print('  ', cfg['out'] or '(главная)', '->', out)
 
 
-def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=0.55):
+def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
     """Живая фигура для AR от Apple (iPhone): кадры видео — плоскости, которые показываются по очереди.
     Apple не проигрывает видео внутри модели, но проигрывает анимацию — получается «мультфильм» по кругу."""
     import subprocess, tempfile
     from pxr import Usd, UsdGeom, UsdShade, UsdUtils, Sdf, Gf, Vt
     meta = json.load(open(os.path.join(folder, 'live.json')))
+    if scale is None:   # текстура ~640 px по высоте, сколько бы ни занимала фигура в кадре видео
+        scale = min(1.0, 640 / meta['h'])
     step = max(1, round(meta['fps'] / fps))
     W, H = meta['w'], meta['h']
     tw, th = int(W * scale) // 2 * 2, int(H * scale) // 2 * 2
@@ -184,7 +186,11 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=0.55):
                     '-vf', f"select='not(mod(n\\,{step}))',scale={tw * 2}:{th}:flags=lanczos", '-vsync', '0',
                     os.path.join(tmp, 'v%03d.png')], check=True)
     vframes = sorted(f for f in os.listdir(tmp) if f.startswith('v'))
+    pp = meta.get('pingpong')            # видео «вперёд-назад»: текстуры берём только из прямого хода
+    if pp:
+        vframes = [f for i, f in enumerate(vframes) if i * step < pp]
     n = len(vframes)
+    seq = list(range(n)) + (list(range(n - 2, 0, -1)) if pp else [])   # порядок показа кадров
     card = sign_card(d)
     src = [(0, 0), (card.width, 0), (card.width, card.height), (0, card.height)]
     tex = os.path.join(tmp, 'tex'); os.makedirs(tex)
@@ -211,7 +217,7 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=0.55):
     UsdGeom.SetStageUpAxis(st, UsdGeom.Tokens.y); UsdGeom.SetStageMetersPerUnit(st, 1.0)
     # Apple сглаживает анимацию между ключами — поэтому шкала времени мелкая (240 делений в секунду),
     # а кадр включается и выключается за одно деление (~4 мс): плавных «переходов» между кадрами нет.
-    TPS = 240; span = TPS // fps; end = n * span
+    TPS = 240; span = TPS // fps; end = len(seq) * span
     st.SetStartTimeCode(0); st.SetEndTimeCode(end); st.SetTimeCodesPerSecond(TPS); st.SetFramesPerSecond(TPS)
     root = UsdGeom.Xform.Define(st, '/Root'); st.SetDefaultPrim(root.GetPrim())
     UsdGeom.Scope.Define(st, '/Root/Materials')
@@ -261,14 +267,17 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=0.55):
         x.AddTranslateOp().Set(Gf.Vec3d(cx, cy, z))
         sop = x.AddScaleOp()
         one = Gf.Vec3f(1, 1, 1)
-        a, b = i * span, (i + 1) * span            # кадр виден на [a, b)
-        if i > 0:
-            sop.Set(tiny, 0); sop.Set(tiny, a - 1)
-        sop.Set(one, a); sop.Set(one, b - 1)
-        if i < n - 1:
-            sop.Set(tiny, b); sop.Set(tiny, end)
-        else:
-            sop.Set(one, end)
+        keys = {}
+        for pos in [p for p, v in enumerate(seq) if v == i]:   # кадр виден на [a, b) — один или два раза за круг
+            a, b = pos * span, (pos + 1) * span
+            if a > 0: keys[a - 1] = tiny
+            keys[a] = one; keys[b - 1] = one
+            if b < end: keys[b] = tiny
+        keys.setdefault(0, tiny)
+        last = max(p for p, v in enumerate(seq) if v == i)
+        keys[end] = one if (last + 1) * span == end else tiny   # последний показанный кадр держится до конца круга
+        for t in sorted(keys):
+            sop.Set(keys[t], t)
         plane(f'/Root/Live/F{i:03d}/Quad', pts, material(f'M{i:03d}', f'c{i:03d}.jpg', f'a{i:03d}.png'))
     # зад: фото со спины, как в статичной модели
     x0 = -bfx * S_static; x1 = (bw - bfx) * S_static
@@ -285,7 +294,7 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=0.55):
         raise RuntimeError('USDZ не собрался')
     shutil.copy(os.path.join(tmp, 'live.usdz'), os.path.join(out, 'live.usdz'))
     shutil.rmtree(tmp, ignore_errors=True)
-    print('   live.usdz:', n, 'кадров,', os.path.getsize(os.path.join(out, 'live.usdz')) // 1024, 'КБ')
+    print('   live.usdz:', n, 'кадров,', len(seq), 'показов за круг,', os.path.getsize(os.path.join(out, 'live.usdz')) // 1024, 'КБ')
 
 
 def main():
