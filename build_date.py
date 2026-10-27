@@ -210,12 +210,6 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
         c = np.where((np.array(mask) > 0)[..., None], c * ink, c)
         Image.fromarray(c.clip(0, 255).astype('uint8')).save(os.path.join(tex, f'c{i:03d}.jpg'), quality=86)
         al.save(os.path.join(tex, f'a{i:03d}.png'), optimize=True)
-    # задняя сторона — фото со спины (уменьшенное)
-    bt, bb, bfx = silhouette_info(back)
-    bw, bh = back.size
-    bsm = back.resize((bw // 2, bh // 2), Image.LANCZOS)
-    bsm.convert('RGB').save(os.path.join(tex, 'back.jpg'), quality=86)
-    bsm.split()[3].save(os.path.join(tex, 'back_a.png'), optimize=True)
 
     usda = os.path.join(tmp, 'live.usdc')
     st = Usd.Stage.CreateNew(usda)
@@ -246,6 +240,13 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
         ta = texture('alpha', alpha_file)
         ta.CreateInput('sourceColorSpace', Sdf.ValueTypeNames.Token).Set('raw')
         sh.CreateInput('opacity', Sdf.ValueTypeNames.Float).ConnectToSource(ta.ConnectableAPI(), 'r')
+        # вырезание по маске, а не полупрозрачность: Apple правильно считает глубину, задняя сторона не «прорезает» переднюю
+        sh.CreateInput('opacityThreshold', Sdf.ValueTypeNames.Float).Set(0.5)
+        # лёгкое самосвечение, как у статичной фигуры: фото не тускнеет при любом освещении
+        te = texture('emit', color_file)
+        te.CreateInput('sourceColorSpace', Sdf.ValueTypeNames.Token).Set('sRGB')
+        te.CreateInput('scale', Sdf.ValueTypeNames.Float4).Set(Gf.Vec4f(0.25, 0.25, 0.25, 1.0))
+        sh.CreateInput('emissiveColor', Sdf.ValueTypeNames.Color3f).ConnectToSource(te.ConnectableAPI(), 'rgb')
         m.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), 'surface')
         return m
 
@@ -263,7 +264,7 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
     S = meta['heightM'] / (meta['bottom'] - meta['top'])
     xl, xr = (0 - meta['feetX']) * S, (W - meta['feetX']) * S
     yt, yb = meta['bottom'] * S, (meta['bottom'] - H) * S
-    cx, cy, z = (xl + xr) / 2, (yt + yb) / 2, 0.0045
+    cx, cy, z = (xl + xr) / 2, (yt + yb) / 2, 0.01      # 2 см между передом и задом
     pts = [(xl - cx, yb - cy, 0), (xr - cx, yb - cy, 0), (xr - cx, yt - cy, 0), (xl - cx, yt - cy, 0)]
     UsdGeom.Xform.Define(st, '/Root/Live')
     tiny = Gf.Vec3f(0.0001, 0.0001, 0.0001)
@@ -284,11 +285,7 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
         for t in sorted(keys):
             sop.Set(keys[t], t)
         plane(f'/Root/Live/F{i:03d}/Quad', pts, material(f'M{i:03d}', f'c{i:03d}.jpg', f'a{i:03d}.png'))
-    # зад: фото со спины, как в статичной модели
-    x0 = -bfx * S_static; x1 = (bw - bfx) * S_static
-    y0 = -(bh - 1 - bb) * S_static; y1 = y0 + bh * S_static
-    plane('/Root/Back', [(-x0, y0, -GAP), (-x1, y0, -GAP), (-x1, y1, -GAP), (-x0, y1, -GAP)],
-          material('MBack', 'back.jpg', 'back_a.png'))
+    # задней стороны в живой модели нет: на iPhone она перекрывала переднюю (обрез таблички и руки, дрожание)
     st.GetRootLayer().Save()
     cwd = os.getcwd(); os.chdir(tmp)
     try:
