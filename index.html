@@ -509,23 +509,29 @@ async function setupLive() {
   /* видео в DOM (невидимое): Chrome на Android не останавливает декодирование «отсоединённого» видео в режиме AR */
   v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
   document.body.appendChild(v);
-  /* обычная текстура, которую обновляем сами на каждом кадре: в AR-режиме Chrome не присылает сигналы о новых кадрах видео */
-  const tex = new THREE.VideoTexture(v); tex.colorSpace = THREE.NoColorSpace;   // кадр подгружаем сами в updateLive()
+  /* каждый кадр видео собираем в обычную картинку с прозрачностью (слева цвет, справа маска)
+     и показываем её как фото — тем же способом, что и статичная фигура: так работает и в AR на Android */
+  const W = meta.w, H = meta.h;
+  const wc = document.createElement('canvas'); wc.width = W * 2; wc.height = H;
+  const wctx = wc.getContext('2d', { willReadFrequently: true });
+  const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+  const octx = oc.getContext('2d');
+  const outImg = octx.createImageData(W, H);
+  const tex = new THREE.CanvasTexture(oc); tex.colorSpace = THREE.SRGBColorSpace;
   tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
-  const mat = new THREE.ShaderMaterial({
-    uniforms: { map: { value: tex } },
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `uniform sampler2D map; varying vec2 vUv;
-      void main(){
-        vec3 c = texture2D(map, vec2(vUv.x * 0.5, vUv.y)).rgb;
-        float a = texture2D(map, vec2(0.5 + vUv.x * 0.5, vUv.y)).r;
-        if (a < 0.04) discard;
-        c = pow(c, vec3(2.2));            /* цвет видео в линейный, как у остальных материалов */
-        gl_FragColor = vec4(c, a);
-        #include <colorspace_fragment>
-      }`,
-    transparent: true, depthWrite: false,
-  });
+  const compose = () => {
+    wctx.drawImage(v, 0, 0, W * 2, H);
+    const d = wctx.getImageData(0, 0, W * 2, H).data, o = outImg.data, row = W * 8;
+    for (let y = 0; y < H; y++) {
+      let si = y * row, ai = si + W * 4, oi = y * W * 4;
+      for (let x = 0; x < W; x++, si += 4, ai += 4, oi += 4) {
+        o[oi] = d[si]; o[oi + 1] = d[si + 1]; o[oi + 2] = d[si + 2]; o[oi + 3] = d[ai];
+      }
+    }
+    octx.putImageData(outImg, 0, 0);
+    tex.needsUpdate = true;
+  };
+  const mat = new THREE.MeshBasicMaterial({ map: tex, alphaTest: 0.5, side: THREE.FrontSide });
   const S = meta.heightM / (meta.bottom - meta.top);   // метров на пиксель
   const plane = new THREE.Mesh(new THREE.PlaneGeometry(meta.w * S, meta.h * S), mat);
   plane.position.set((meta.w / 2 - meta.feetX) * S, (meta.bottom - meta.h / 2) * S, 0.0045);
@@ -540,12 +546,15 @@ async function setupLive() {
   dMesh.renderOrder = 2; dMesh.frustumCulled = false;
   const front = figure.getObjectByName('front'); if (front) front.visible = false;
   figure.add(plane); figure.add(dMesh);
-  live = { meta, video: v, tex, S, dGeo, last: -1 };
+  live = { meta, video: v, tex, compose, lastT: -1, S, dGeo, last: -1 };
   updateLive(true);
 }
 function updateLive(force) {   // загрузить текущий кадр видео и поставить дату на табличку
   if (!live) return;
-  if (live.video.readyState >= 2) live.tex.needsUpdate = true;
+  if (live.video.readyState >= 2 && live.video.currentTime !== live.lastT) {   // новый кадр видео — пересобрать картинку
+    live.lastT = live.video.currentTime;
+    try { live.compose(); } catch (e) {}
+  }
   if (live.video.paused && mode) live.video.play().catch(() => {});   // в AR видео не должно стоять
   const m = live.meta, n = m.frames;
   const f = Math.min(n - 1, Math.floor((live.video.currentTime || 0) * m.fps) % n);
