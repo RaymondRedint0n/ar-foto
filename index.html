@@ -506,7 +506,11 @@ async function setupLive() {
   const v = document.createElement('video');
   v.src = 'live.mp4' + (meta.v ? '?v=' + meta.v : ''); v.muted = true; v.loop = true; v.playsInline = true;
   v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.preload = 'auto';
-  const tex = new THREE.VideoTexture(v); tex.colorSpace = THREE.NoColorSpace;
+  /* видео в DOM (невидимое): Chrome на Android не останавливает декодирование «отсоединённого» видео в режиме AR */
+  v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
+  document.body.appendChild(v);
+  /* обычная текстура, которую обновляем сами на каждом кадре: в AR-режиме Chrome не присылает сигналы о новых кадрах видео */
+  const tex = new THREE.VideoTexture(v); tex.colorSpace = THREE.NoColorSpace;   // кадр подгружаем сами в updateLive()
   tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
   const mat = new THREE.ShaderMaterial({
     uniforms: { map: { value: tex } },
@@ -536,11 +540,13 @@ async function setupLive() {
   dMesh.renderOrder = 2; dMesh.frustumCulled = false;
   const front = figure.getObjectByName('front'); if (front) front.visible = false;
   figure.add(plane); figure.add(dMesh);
-  live = { meta, video: v, S, dGeo, last: -1 };
+  live = { meta, video: v, tex, S, dGeo, last: -1 };
   updateLive(true);
 }
-function updateLive(force) {   // поставить дату на табличку текущего кадра
+function updateLive(force) {   // загрузить текущий кадр видео и поставить дату на табличку
   if (!live) return;
+  if (live.video.readyState >= 2) live.tex.needsUpdate = true;
+  if (live.video.paused && mode) live.video.play().catch(() => {});   // в AR видео не должно стоять
   const m = live.meta, n = m.frames;
   const f = Math.min(n - 1, Math.floor((live.video.currentTime || 0) * m.fps) % n);
   if (f === live.last && !force) return;
