@@ -179,6 +179,7 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
     """Живая фигура для AR от Apple (iPhone): кадры видео — плоскости, которые показываются по очереди.
     Apple не проигрывает видео внутри модели, но проигрывает анимацию — получается «мультфильм» по кругу."""
     import subprocess, tempfile
+    from scipy import ndimage
     from pxr import Usd, UsdGeom, UsdShade, UsdUtils, Sdf, Gf, Vt
     meta = json.load(open(os.path.join(folder, 'live.json')))
     if scale is None:   # текстура ~640 px по высоте, сколько бы ни занимала фигура в кадре видео
@@ -208,8 +209,15 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
         mask = Image.new('L', col.size, 0); ImageDraw.Draw(mask).polygon(q, fill=255)
         c = np.array(col).astype(float); ink = np.array(warped).astype(float) / 255
         c = np.where((np.array(mask) > 0)[..., None], c * ink, c)
-        Image.fromarray(c.clip(0, 255).astype('uint8')).save(os.path.join(tex, f'c{i:03d}.jpg'), quality=86)
-        al.save(os.path.join(tex, f'a{i:03d}.png'), optimize=True)
+        # одна картинка на кадр: цвет + прозрачность вместе (с отдельными картинками iPhone сдвигал прозрачность)
+        an = np.array(al)
+        inside = an > 127
+        c = c.clip(0, 255).astype('uint8')
+        _, (iy, ix) = ndimage.distance_transform_edt(~inside, return_indices=True)
+        c = c[iy, ix]                                   # снаружи — цвет ближайшего края фигуры, без тёмной каймы
+        rgba = Image.fromarray(np.dstack([c, np.where(inside, 255, 0).astype('uint8')]), 'RGBA')
+        rgba.quantize(256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.FLOYDSTEINBERG) \
+            .save(os.path.join(tex, f'f{i:03d}.png'), optimize=True)
 
     usda = os.path.join(tmp, 'live.usdc')
     st = Usd.Stage.CreateNew(usda)
@@ -221,7 +229,7 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
     root = UsdGeom.Xform.Define(st, '/Root'); st.SetDefaultPrim(root.GetPrim())
     UsdGeom.Scope.Define(st, '/Root/Materials')
 
-    def material(name, color_file, alpha_file):
+    def material(name, image_file):
         m = UsdShade.Material.Define(st, f'/Root/Materials/{name}')
         sh = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/PBR'); sh.CreateIdAttr('UsdPreviewSurface')
         sh.CreateInput('roughness', Sdf.ValueTypeNames.Float).Set(1.0)
@@ -234,19 +242,12 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
             t.CreateInput('st', Sdf.ValueTypeNames.Float2).ConnectToSource(rd.ConnectableAPI(), 'result')
             t.CreateInput('wrapS', Sdf.ValueTypeNames.Token).Set('clamp'); t.CreateInput('wrapT', Sdf.ValueTypeNames.Token).Set('clamp')
             return t
-        tc = texture('col', color_file)
+        tc = texture('img', image_file)                 # цвет и прозрачность из одной картинки
         tc.CreateInput('sourceColorSpace', Sdf.ValueTypeNames.Token).Set('sRGB')
+        tc.CreateOutput('rgb', Sdf.ValueTypeNames.Float3); tc.CreateOutput('a', Sdf.ValueTypeNames.Float)
         sh.CreateInput('diffuseColor', Sdf.ValueTypeNames.Color3f).ConnectToSource(tc.ConnectableAPI(), 'rgb')
-        ta = texture('alpha', alpha_file)
-        ta.CreateInput('sourceColorSpace', Sdf.ValueTypeNames.Token).Set('raw')
-        sh.CreateInput('opacity', Sdf.ValueTypeNames.Float).ConnectToSource(ta.ConnectableAPI(), 'r')
-        # вырезание по маске, а не полупрозрачность: Apple правильно считает глубину, задняя сторона не «прорезает» переднюю
-        sh.CreateInput('opacityThreshold', Sdf.ValueTypeNames.Float).Set(0.5)
-        # лёгкое самосвечение, как у статичной фигуры: фото не тускнеет при любом освещении
-        te = texture('emit', color_file)
-        te.CreateInput('sourceColorSpace', Sdf.ValueTypeNames.Token).Set('sRGB')
-        te.CreateInput('scale', Sdf.ValueTypeNames.Float4).Set(Gf.Vec4f(0.25, 0.25, 0.25, 1.0))
-        sh.CreateInput('emissiveColor', Sdf.ValueTypeNames.Color3f).ConnectToSource(te.ConnectableAPI(), 'rgb')
+        sh.CreateInput('opacity', Sdf.ValueTypeNames.Float).ConnectToSource(tc.ConnectableAPI(), 'a')
+        sh.CreateInput('opacityThreshold', Sdf.ValueTypeNames.Float).Set(0.5)   # чёткое вырезание по маске
         m.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), 'surface')
         return m
 
@@ -284,7 +285,7 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
         keys[end] = one if (last + 1) * span == end else tiny   # последний показанный кадр держится до конца круга
         for t in sorted(keys):
             sop.Set(keys[t], t)
-        plane(f'/Root/Live/F{i:03d}/Quad', pts, material(f'M{i:03d}', f'c{i:03d}.jpg', f'a{i:03d}.png'))
+        plane(f'/Root/Live/F{i:03d}/Quad', pts, material(f'M{i:03d}', f'f{i:03d}.png'))
     # задней стороны в живой модели нет: на iPhone она перекрывала переднюю (обрез таблички и руки, дрожание)
     st.GetRootLayer().Save()
     cwd = os.getcwd(); os.chdir(tmp)
