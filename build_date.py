@@ -231,86 +231,99 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
         rgba.quantize(256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.FLOYDSTEINBERG) \
             .save(os.path.join(tex, f'f{i:03d}.png'), optimize=True)
 
-    usda = os.path.join(tmp, 'live.usdc')
-    st = Usd.Stage.CreateNew(usda)
-    UsdGeom.SetStageUpAxis(st, UsdGeom.Tokens.y); UsdGeom.SetStageMetersPerUnit(st, 1.0)
-    # Apple сглаживает анимацию между ключами — поэтому шкала времени мелкая (240 делений в секунду),
-    # а кадр включается и выключается за одно деление (~4 мс): плавных «переходов» между кадрами нет.
-    TPS = 240; span = TPS // fps; end = len(seq) * span
-    st.SetStartTimeCode(0); st.SetEndTimeCode(end); st.SetTimeCodesPerSecond(TPS); st.SetFramesPerSecond(TPS)
-    root = UsdGeom.Xform.Define(st, '/Root'); st.SetDefaultPrim(root.GetPrim())
-    UsdGeom.Scope.Define(st, '/Root/Materials')
+    def make(variant):
+        usda = os.path.join(tmp, f'{variant}.usdc')
+        st = Usd.Stage.CreateNew(usda)
+        UsdGeom.SetStageUpAxis(st, UsdGeom.Tokens.y); UsdGeom.SetStageMetersPerUnit(st, 1.0)
+        # Apple сглаживает анимацию между ключами — поэтому шкала времени мелкая (240 делений в секунду),
+        # а кадр включается и выключается за одно деление (~4 мс): плавных «переходов» между кадрами нет.
+        TPS = 240; span = TPS // fps; end = len(seq) * span
+        if variant != 'test-static':
+            st.SetStartTimeCode(0); st.SetEndTimeCode(end); st.SetTimeCodesPerSecond(TPS); st.SetFramesPerSecond(TPS)
+        root = UsdGeom.Xform.Define(st, '/Root'); st.SetDefaultPrim(root.GetPrim())
+        UsdGeom.Scope.Define(st, '/Root/Materials')
 
-    def material(name, image_file):
-        m = UsdShade.Material.Define(st, f'/Root/Materials/{name}')
-        sh = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/PBR'); sh.CreateIdAttr('UsdPreviewSurface')
-        sh.CreateInput('roughness', Sdf.ValueTypeNames.Float).Set(1.0)
-        sh.CreateInput('metallic', Sdf.ValueTypeNames.Float).Set(0.0)
-        rd = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/st'); rd.CreateIdAttr('UsdPrimvarReader_float2')
-        rd.CreateInput('varname', Sdf.ValueTypeNames.String).Set('st')
-        def texture(tname, f):
-            t = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/{tname}'); t.CreateIdAttr('UsdUVTexture')
-            t.CreateInput('file', Sdf.ValueTypeNames.Asset).Set(f'tex/{f}')
-            t.CreateInput('st', Sdf.ValueTypeNames.Float2).ConnectToSource(rd.ConnectableAPI(), 'result')
-            t.CreateInput('wrapS', Sdf.ValueTypeNames.Token).Set('clamp'); t.CreateInput('wrapT', Sdf.ValueTypeNames.Token).Set('clamp')
-            return t
-        tc = texture('img', image_file)                 # цвет и прозрачность из одной картинки
-        tc.CreateInput('sourceColorSpace', Sdf.ValueTypeNames.Token).Set('sRGB')
-        tc.CreateOutput('rgb', Sdf.ValueTypeNames.Float3); tc.CreateOutput('a', Sdf.ValueTypeNames.Float)
-        sh.CreateInput('diffuseColor', Sdf.ValueTypeNames.Color3f).ConnectToSource(tc.ConnectableAPI(), 'rgb')
-        sh.CreateInput('opacity', Sdf.ValueTypeNames.Float).ConnectToSource(tc.ConnectableAPI(), 'a')
-        sh.CreateInput('opacityThreshold', Sdf.ValueTypeNames.Float).Set(0.5)   # чёткое вырезание по маске
-        m.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), 'surface')
-        return m
+        def material(name, image_file):
+            m = UsdShade.Material.Define(st, f'/Root/Materials/{name}')
+            sh = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/PBR'); sh.CreateIdAttr('UsdPreviewSurface')
+            sh.CreateInput('roughness', Sdf.ValueTypeNames.Float).Set(1.0)
+            sh.CreateInput('metallic', Sdf.ValueTypeNames.Float).Set(0.0)
+            rd = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/st'); rd.CreateIdAttr('UsdPrimvarReader_float2')
+            rd.CreateInput('varname', Sdf.ValueTypeNames.String).Set('st')
+            def texture(tname, f):
+                t = UsdShade.Shader.Define(st, f'/Root/Materials/{name}/{tname}'); t.CreateIdAttr('UsdUVTexture')
+                t.CreateInput('file', Sdf.ValueTypeNames.Asset).Set(f'tex/{f}')
+                t.CreateInput('st', Sdf.ValueTypeNames.Float2).ConnectToSource(rd.ConnectableAPI(), 'result')
+                t.CreateInput('wrapS', Sdf.ValueTypeNames.Token).Set('clamp'); t.CreateInput('wrapT', Sdf.ValueTypeNames.Token).Set('clamp')
+                return t
+            tc = texture('img', image_file)                 # цвет и прозрачность из одной картинки
+            tc.CreateInput('sourceColorSpace', Sdf.ValueTypeNames.Token).Set('sRGB')
+            tc.CreateOutput('rgb', Sdf.ValueTypeNames.Float3); tc.CreateOutput('a', Sdf.ValueTypeNames.Float)
+            sh.CreateInput('diffuseColor', Sdf.ValueTypeNames.Color3f).ConnectToSource(tc.ConnectableAPI(), 'rgb')
+            sh.CreateInput('opacity', Sdf.ValueTypeNames.Float).ConnectToSource(tc.ConnectableAPI(), 'a')
+            sh.CreateInput('opacityThreshold', Sdf.ValueTypeNames.Float).Set(0.5)   # чёткое вырезание по маске
+            m.CreateSurfaceOutput().ConnectToSource(sh.ConnectableAPI(), 'surface')
+            return m
 
-    def plane(path, pts, mat):
-        mesh = UsdGeom.Mesh.Define(st, path)
-        mesh.CreatePointsAttr(Vt.Vec3fArray([Gf.Vec3f(*p) for p in pts]))
-        mesh.CreateFaceVertexCountsAttr([4]); mesh.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
-        mesh.CreateDoubleSidedAttr(False)
-        mesh.CreateExtentAttr(UsdGeom.Mesh.ComputeExtent(mesh.GetPointsAttr().Get()))
-        pv = UsdGeom.PrimvarsAPI(mesh).CreatePrimvar('st', Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex)
-        pv.Set(Vt.Vec2fArray([Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]))
-        UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(mat)
+        def plane(path, pts, mat):
+            mesh = UsdGeom.Mesh.Define(st, path)
+            mesh.CreatePointsAttr(Vt.Vec3fArray([Gf.Vec3f(*p) for p in pts]))
+            mesh.CreateFaceVertexCountsAttr([4]); mesh.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
+            mesh.CreateDoubleSidedAttr(False)
+            mesh.CreateExtentAttr(UsdGeom.Mesh.ComputeExtent(mesh.GetPointsAttr().Get()))
+            pv = UsdGeom.PrimvarsAPI(mesh).CreatePrimvar('st', Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex)
+            pv.Set(Vt.Vec2fArray([Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]))
+            UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(mat)
 
-    # перед: кадры видео (масштаб — как в проигрывателе на странице)
-    S = meta['heightM'] / (meta['bottom'] - meta['top'])
-    xl, xr = (0 - meta['feetX']) * S, (W - meta['feetX']) * S
-    yt, yb = meta['bottom'] * S, (meta['bottom'] - H) * S
-    # картинка кадра занимает левый верхний угол текстуры 512×1024 — плоскость расширяем на поля
-    xr = xl + (xr - xl) * TEXW / img_w
-    yb = yt - (yt - yb) * TEXH / img_h
-    cx, cy, z = (xl + xr) / 2, (yt + yb) / 2, 0.01
-    pts = [(xl - cx, yb - cy, 0), (xr - cx, yb - cy, 0), (xr - cx, yt - cy, 0), (xl - cx, yt - cy, 0)]
-    UsdGeom.Xform.Define(st, '/Root/Live')
-    tiny = Gf.Vec3f(0.0001, 0.0001, 0.0001)
-    for i in range(n):
-        x = UsdGeom.Xform.Define(st, f'/Root/Live/F{i:03d}')
-        x.AddTranslateOp().Set(Gf.Vec3d(cx, cy, z))
-        sop = x.AddScaleOp()
-        one = Gf.Vec3f(1, 1, 1)
-        keys = {}
-        for pos in [p for p, v in enumerate(seq) if v == i]:   # кадр виден на [a, b) — один или два раза за круг
-            a, b = pos * span, (pos + 1) * span
-            if a > 0: keys[a - 1] = tiny
-            keys[a] = one; keys[b - 1] = one
-            if b < end: keys[b] = tiny
-        keys.setdefault(0, tiny)
-        last = max(p for p, v in enumerate(seq) if v == i)
-        keys[end] = one if (last + 1) * span == end else tiny   # последний показанный кадр держится до конца круга
-        for t in sorted(keys):
-            sop.Set(keys[t], t)
-        plane(f'/Root/Live/F{i:03d}/Quad', pts, material(f'M{i:03d}', f'f{i:03d}.png'))
-    # задней стороны в живой модели нет: на iPhone она перекрывала переднюю (обрез таблички и руки, дрожание)
-    st.GetRootLayer().Save()
-    cwd = os.getcwd(); os.chdir(tmp)
-    try:
-        ok = UsdUtils.CreateNewARKitUsdzPackage(Sdf.AssetPath('live.usdc'), 'live.usdz')
-    finally:
-        os.chdir(cwd)
-    if not ok:
-        raise RuntimeError('USDZ не собрался')
-    shutil.copy(os.path.join(tmp, 'live.usdz'), os.path.join(out, 'live.usdz'))
+        # перед: кадры видео (масштаб — как в проигрывателе на странице)
+        S = meta['heightM'] / (meta['bottom'] - meta['top'])
+        xl, xr = (0 - meta['feetX']) * S, (W - meta['feetX']) * S
+        yt, yb = meta['bottom'] * S, (meta['bottom'] - H) * S
+        # картинка кадра занимает левый верхний угол текстуры 512×1024 — плоскость расширяем на поля
+        xr = xl + (xr - xl) * TEXW / img_w
+        yb = yt - (yt - yb) * TEXH / img_h
+        cx, cy, z = (xl + xr) / 2, (yt + yb) / 2, 0.01
+        pts = [(xl - cx, yb - cy, 0), (xr - cx, yb - cy, 0), (xr - cx, yt - cy, 0), (xl - cx, yt - cy, 0)]
+        UsdGeom.Xform.Define(st, '/Root/Live')
+        tiny = Gf.Vec3f(0.0001, 0.0001, 0.0001)
+        for i in (range(1) if variant == 'test-static' else range(n)):
+            x = UsdGeom.Xform.Define(st, f'/Root/Live/F{i:03d}')
+            x.AddTranslateOp().Set(Gf.Vec3d(cx, cy, z))
+            if variant == 'test-static':
+                plane(f'/Root/Live/F{i:03d}/Quad', pts, material(f'M{i:03d}', f'f{i:03d}.png'))
+                continue
+            sop = x.AddScaleOp() if variant == 'live' else None
+            one = Gf.Vec3f(1, 1, 1)
+            keys = {}
+            for pos in [p for p, v in enumerate(seq) if v == i]:   # кадр виден на [a, b) — один или два раза за круг
+                a, b = pos * span, (pos + 1) * span
+                if a > 0: keys[a - 1] = tiny
+                keys[a] = one; keys[b - 1] = one
+                if b < end: keys[b] = tiny
+            keys.setdefault(0, tiny)
+            last = max(p for p, v in enumerate(seq) if v == i)
+            keys[end] = one if (last + 1) * span == end else tiny   # последний показанный кадр держится до конца круга
+            if variant == 'live':
+                for t in sorted(keys):
+                    sop.Set(keys[t], t)
+            else:   # test-vis: кадры переключаются атрибутом видимости
+                va = x.CreateVisibilityAttr()
+                for t in sorted(keys):
+                    va.Set(UsdGeom.Tokens.inherited if keys[t] == one else UsdGeom.Tokens.invisible, t)
+            plane(f'/Root/Live/F{i:03d}/Quad', pts, material(f'M{i:03d}', f'f{i:03d}.png'))
+        # задней стороны в живой модели нет: на iPhone она перекрывала переднюю (обрез таблички и руки, дрожание)
+        st.GetRootLayer().Save()
+        cwd = os.getcwd(); os.chdir(tmp)
+        try:
+            ok = UsdUtils.CreateNewARKitUsdzPackage(Sdf.AssetPath(f'{variant}.usdc'), f'{variant}.usdz')
+        finally:
+            os.chdir(cwd)
+        if not ok:
+            raise RuntimeError('USDZ не собрался')
+        shutil.copy(os.path.join(tmp, f'{variant}.usdz'), os.path.join(out, f'{variant}.usdz'))
+
+    for variant in ('live', 'test-static', 'test-vis'):
+        make(variant)
     shutil.rmtree(tmp, ignore_errors=True)
     print('   live.usdz:', n, 'кадров,', len(seq), 'показов за круг,', os.path.getsize(os.path.join(out, 'live.usdz')) // 1024, 'КБ')
 
