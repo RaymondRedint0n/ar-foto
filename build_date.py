@@ -200,6 +200,7 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
     card = sign_card(d)
     src = [(0, 0), (card.width, 0), (card.width, card.height), (0, card.height)]
     tex = os.path.join(tmp, 'tex'); os.makedirs(tex)
+    TEXW, TEXH = 512, 1024
     k = tw / W
     for i, name in enumerate(vframes):
         im = np.array(Image.open(os.path.join(tmp, name)).convert('RGB'))
@@ -216,6 +217,17 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
         _, (iy, ix) = ndimage.distance_transform_edt(~inside, return_indices=True)
         c = c[iy, ix]                                   # снаружи — цвет ближайшего края фигуры, без тёмной каймы
         rgba = Image.fromarray(np.dstack([c, np.where(inside, 255, 0).astype('uint8')]), 'RGBA')
+        # размер картинки — степень двойки (512×1024): iPhone обрезал картинки с «неровной» шириной справа
+        fit = min(TEXW / rgba.width, TEXH / rgba.height)
+        rgba = rgba.resize((round(rgba.width * fit), round(rgba.height * fit)), Image.LANCZOS)
+        a2 = np.array(rgba)[:, :, 3]; rgba.putalpha(Image.fromarray(np.where(a2 > 127, 255, 0).astype('uint8')))
+        canvas = Image.new('RGBA', (TEXW, TEXH), (0, 0, 0, 0))
+        pad = np.array(rgba)
+        canvas.paste(rgba, (0, 0))
+        cv = np.array(canvas); inside2 = cv[:, :, 3] > 0
+        _, (jy, jx) = ndimage.distance_transform_edt(~inside2, return_indices=True)
+        cv[:, :, :3] = cv[:, :, :3][jy, jx]          # поля тоже залиты цветом края (прозрачные)
+        rgba = Image.fromarray(cv, 'RGBA'); img_w, img_h = round(tw * fit), round(th * fit)
         rgba.quantize(256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.FLOYDSTEINBERG) \
             .save(os.path.join(tex, f'f{i:03d}.png'), optimize=True)
 
@@ -265,7 +277,10 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
     S = meta['heightM'] / (meta['bottom'] - meta['top'])
     xl, xr = (0 - meta['feetX']) * S, (W - meta['feetX']) * S
     yt, yb = meta['bottom'] * S, (meta['bottom'] - H) * S
-    cx, cy, z = (xl + xr) / 2, (yt + yb) / 2, 0.01      # 2 см между передом и задом
+    # картинка кадра занимает левый верхний угол текстуры 512×1024 — плоскость расширяем на поля
+    xr = xl + (xr - xl) * TEXW / img_w
+    yb = yt - (yt - yb) * TEXH / img_h
+    cx, cy, z = (xl + xr) / 2, (yt + yb) / 2, 0.01
     pts = [(xl - cx, yb - cy, 0), (xr - cx, yb - cy, 0), (xr - cx, yt - cy, 0), (xl - cx, yt - cy, 0)]
     UsdGeom.Xform.Define(st, '/Root/Live')
     tiny = Gf.Vec3f(0.0001, 0.0001, 0.0001)
