@@ -270,6 +270,9 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
             mesh.CreatePointsAttr(Vt.Vec3fArray([Gf.Vec3f(*p) for p in pts]))
             mesh.CreateFaceVertexCountsAttr([4]); mesh.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
             mesh.CreateDoubleSidedAttr(False)
+            # без сглаживания: по умолчанию iPhone скругляет плоскость почти в овал и срезает углы (табличку)
+            mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
+            mesh.CreateNormalsAttr(Vt.Vec3fArray([Gf.Vec3f(0, 0, 1)] * 4)); mesh.SetNormalsInterpolation(UsdGeom.Tokens.vertex)
             mesh.CreateExtentAttr(UsdGeom.Mesh.ComputeExtent(mesh.GetPointsAttr().Get()))
             pv = UsdGeom.PrimvarsAPI(mesh).CreatePrimvar('st', Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex)
             pv.Set(Vt.Vec2fArray([Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]))
@@ -322,8 +325,7 @@ def build_live_usdz(d, folder, out, back, S_static, fps=12, scale=None):
             raise RuntimeError('USDZ не собрался')
         shutil.copy(os.path.join(tmp, f'{variant}.usdz'), os.path.join(out, f'{variant}.usdz'))
 
-    for variant in ('live', 'test-static', 'test-vis'):
-        make(variant)
+    make('live')
     shutil.rmtree(tmp, ignore_errors=True)
     print('   live.usdz:', n, 'кадров,', len(seq), 'показов за круг,', os.path.getsize(os.path.join(out, 'live.usdz')) // 1024, 'КБ')
 
