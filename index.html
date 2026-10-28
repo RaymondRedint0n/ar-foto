@@ -591,6 +591,7 @@ function setupScene(xr) {
 function disposeScene() {
   if (renderer) { renderer.setAnimationLoop(null); renderer.dispose(); }
   if (holder && figure) holder.remove(figure);
+  if (warmRT) { warmRT.dispose(); warmRT = null; }
   renderer = scene = camera = holder = reticle = null;
 }
 function applyScale() {
@@ -616,14 +617,14 @@ async function startXR() {
 
   const V3 = THREE.Vector3, Q = THREE.Quaternion;
   const t0 = performance.now(); let firstPose = 0, placed = false, lastHit = null; const camPos = new V3();
-  const place = (v) => { holder.position.copy(v); holder.visible = true; placed = true; faceFrom(camPos.x, camPos.z); };
+  const place = (v) => { holder.position.copy(v); holder.visible = true; placed = true; faceFrom(camPos.x, camPos.z); warmLeft = 3; };
   const placeAhead = (pose) => {
     const o = pose.transform.orientation, fwd = new V3(0, 0, -1).applyQuaternion(new Q(o.x, o.y, o.z, o.w));
     fwd.y = 0; if (fwd.lengthSq() < 1e-4) fwd.set(0, 0, -1); fwd.normalize();
     const floorY = refType === 'local-floor' ? 0 : camPos.y - 1.4;
     place(new V3(camPos.x + fwd.x * 2.2, floorY, camPos.z + fwd.z * 2.2));
   };
-  let lastPose = null;
+  let lastPose = null, warmLeft = 0, warmNext = 0;
   camAccess = null; xrShotPending = false; binding = null; blit = null; root.classList.remove('xr-shot');
   session.addEventListener('select', () => { if (lastHit) place(lastHit); });
   session.addEventListener('end', onXREnd);
@@ -661,6 +662,7 @@ async function startXR() {
     }
     updateLive(); renderer.render(scene, camera);
     if (xrShotPending) { xrShotPending = false; try { captureXR(pose); } catch (e) { tip('Снимок не получился — сделайте скриншот телефона', 5000); } }
+    else if (warmLeft > 0 && now >= warmNext) { warmLeft--; warmNext = now + 700; warmUp(); }
   });
 }
 /* ---------- снимок прямо в AR: кадр камеры (WebXR Raw Camera Access) + фигура ---------- */
@@ -692,6 +694,21 @@ function readTexture(gl, tex, w, h) {   // скопировать «непроз
   const px = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(fb); gl.deleteTexture(out);
   return px;
+}
+/* «прогрев»: одна отрисовка сцены вне AR в маленькую картинку — как при снимке.
+   На части Android-телефонов без этого видео-фигура в живом AR не появляется до первого снимка. */
+let warmRT = null;
+function warmUp() {
+  try {
+    if (!warmRT) warmRT = new THREE.WebGLRenderTarget(64, 64);
+    const prev = renderer.getRenderTarget(), retVis = reticle.visible, cam = renderer.xr.getCamera();
+    const vc = new THREE.PerspectiveCamera(); cam.matrixWorld.decompose(vc.position, vc.quaternion, vc.scale);
+    vc.projectionMatrix.copy(cam.projectionMatrix); vc.projectionMatrixInverse.copy(cam.projectionMatrixInverse);
+    reticle.visible = false; renderer.xr.enabled = false;
+    renderer.setRenderTarget(warmRT); renderer.clear(); renderer.render(scene, vc);
+    renderer.setRenderTarget(prev); renderer.xr.enabled = true; reticle.visible = retVis;
+    renderer.resetState();
+  } catch (e) { try { renderer.xr.enabled = true; } catch (_) {} }
 }
 function captureXR(pose) {
   const view = pose.views[0], cam = view && view.camera;
